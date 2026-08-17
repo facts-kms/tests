@@ -170,3 +170,7 @@ cargo sim ux replay reports/ux/smoke.json
 cargo sim ux report reports/ux/smoke.json
 cargo sim ux compare reports/ux/baseline.json reports/ux/current.json
 ```
+
+## License
+
+MIT

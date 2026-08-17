@@ -1,0 +1,9 @@
+[package]
+name = "fact-sim-assert"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+fact-sim-core = { path = "../fact-sim-core" }
