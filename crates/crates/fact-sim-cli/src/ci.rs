@@ -1104,8 +1104,11 @@ fn validate_operations_registry() -> Result<Value> {
 
 fn validate_cli_operation_mapping() -> Result<Value> {
     let root = repo_root();
-    let registry: Value =
-        serde_json::from_slice(&fs::read(root.join("docs/operations/registry.json"))?)?;
+    let registry_path = root.join("docs/operations/registry.json");
+    let registry: Value = serde_json::from_slice(
+        &fs::read(&registry_path)
+            .with_context(|| format!("reading {}", registry_path.display()))?,
+    )?;
     let empty = Vec::new();
     let known_operations = registry["operations"]
         .as_array()
@@ -1113,7 +1116,9 @@ fn validate_cli_operation_mapping() -> Result<Value> {
         .iter()
         .filter_map(|operation| operation["name"].as_str())
         .collect::<BTreeSet<_>>();
-    let mapping = fs::read_to_string(root.join("docs/operations/interface-mapping.md"))?;
+    let mapping_path = root.join("docs/operations/interface-mapping.md");
+    let mapping = fs::read_to_string(&mapping_path)
+        .with_context(|| format!("reading {}", mapping_path.display()))?;
     let missing_from_mapping = known_operations
         .iter()
         .filter(|operation| !mapping.contains(**operation))
@@ -1715,9 +1720,11 @@ fn rust_toolchain() -> String {
 }
 
 fn operations_spec_version() -> Result<String> {
-    let registry: Value = serde_json::from_slice(&fs::read(
-        repo_root().join("docs/operations/registry.json"),
-    )?)?;
+    let registry_path = repo_root().join("docs/operations/registry.json");
+    let registry: Value = serde_json::from_slice(
+        &fs::read(&registry_path)
+            .with_context(|| format!("reading {}", registry_path.display()))?,
+    )?;
     Ok(registry["spec_version"]
         .as_str()
         .unwrap_or("unknown")
