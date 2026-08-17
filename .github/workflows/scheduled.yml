@@ -1,0 +1,68 @@
+name: Scheduled
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Scale profile to inspect or validate
+        required: true
+        default: scale-500k-balanced
+      include_large:
+        description: Manually opt in to 500K validation
+        required: true
+        default: false
+        type: boolean
+      fixture_base:
+        description: Fixture directory
+        required: true
+        default: fixtures
+
+jobs:
+  scheduled:
+    runs-on: [self-hosted, macOS, fact-benchmarks]
+    timeout-minutes: 1440
+    env:
+      FACT_SOURCE_DIR: ../sdk
+      FACT_BINARY: ${{ github.workspace }}/cli/target/debug/fact
+      PROFILE: ${{ inputs.profile || 'scale-500k-balanced' }}
+      INCLUDE_LARGE: ${{ github.event_name == 'workflow_dispatch' && inputs.include_large == true && 'true' || 'false' }}
+      FIXTURE_BASE: ${{ inputs.fixture_base || 'fixtures' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: fact-tests
+      - uses: actions/checkout@v4
+        with:
+          repository: facts-kms/sdk
+          path: sdk
+      - uses: actions/checkout@v4
+        with:
+          repository: facts-kms/cli
+          path: cli
+      - name: Build fact CLI
+        run: cargo build --manifest-path cli/Cargo.toml --bin fact --locked
+      - name: Scheduled scale validation
+        working-directory: fact-tests
+        run: |
+          large_args=()
+          if [ "$INCLUDE_LARGE" = "true" ]; then
+            large_args+=(--include-large)
+          fi
+          cargo sim ci scheduled \
+            --profile "$PROFILE" \
+            --fixture-base "$FIXTURE_BASE" \
+            --report-dir reports/ci \
+            "${large_args[@]}"
+      - name: Render CI summary
+        if: always()
+        working-directory: fact-tests
+        run: cargo sim ci summary reports/ci/scheduled-summary.json > reports/ci/scheduled-summary.md
+      - name: Upload scheduled reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-reports
+          path: fact-tests/reports/ci
+          if-no-files-found: error

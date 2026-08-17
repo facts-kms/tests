@@ -1,0 +1,6 @@
+# Phase    Branch-Pattern    Script-Path
+lint       *                 ./.deploy/phases/lint
+test       *                 ./.deploy/phases/test
+build      *-build-*         ./.deploy/phases/build
+release    *-release-*       ./.deploy/phases/release
+deploy     *-deploy-*        ./.deploy/phases/deploy

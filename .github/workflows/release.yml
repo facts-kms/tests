@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      include_large:
+        description: Manually opt in to 500K release validation
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    env:
+      FACT_SOURCE_DIR: ../sdk
+      FACT_BINARY: ${{ github.workspace }}/cli/target/debug/fact
+      INCLUDE_LARGE: ${{ github.event_name == 'workflow_dispatch' && inputs.include_large == true && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: fact-tests
+      - uses: actions/checkout@v4
+        with:
+          repository: facts-kms/sdk
+          path: sdk
+      - uses: actions/checkout@v4
+        with:
+          repository: facts-kms/cli
+          path: cli
+      - name: Build fact CLI
+        run: cargo build --manifest-path cli/Cargo.toml --bin fact --locked
+      - name: Release validation
+        working-directory: fact-tests
+        run: |
+          large_args=()
+          if [ "$INCLUDE_LARGE" = "true" ]; then
+            large_args+=(--include-large)
+          fi
+          cargo sim ci release --report-dir reports/ci "${large_args[@]}"
+      - name: Render CI summary
+        if: always()
+        working-directory: fact-tests
+        run: cargo sim ci summary reports/ci/release-summary.json > reports/ci/release-summary.md
+      - name: Upload release validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: fact-tests/reports/ci
+          if-no-files-found: error

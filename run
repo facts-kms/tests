@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Discover RUN_DIR unless explicitly provided.
+RUN_DIR="${RUN_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
+# Default both the .env file and .env directory to $RUN_DIR/.env.
+RUN_ENV_DIR="${RUN_ENV_DIR:-$RUN_DIR/.env}"
+RUN_ENV_FILE="${RUN_ENV_FILE:-$RUN_DIR/.env}"
+
+# Resolve command metadata once.
+RUN_CMD="${1:-}"
+RUN_CMD_NAME="$([ -n "$RUN_CMD" ] && basename "$RUN_CMD" || true)"
+RUN_CMD_DOES="$([ -n "$RUN_CMD_NAME" ] && printf 'run_does_%s' "${RUN_CMD_NAME//-/_}" || true)"
+
+# Handle .env file.
+if [ -f "$RUN_ENV_FILE" ]; then
+  set -a
+  source "$RUN_ENV_FILE"
+  set +a
+fi
+
+# Handle .env directory.
+if [ -d "$RUN_ENV_DIR" ]; then
+  set -a
+  while IFS= read -r -d '' run_env_source; do
+    source "$run_env_source"
+  done < <(find "$RUN_ENV_DIR" -type f -print0 | sort -z)
+  set +a
+fi
+
+# Execute command, with optional transformer interception.
+run_exec() {
+  local run_cmd_mapped
+
+  if [ "$#" -eq 0 ]; then
+    exec "${SHELL:-/usr/bin/env bash}"
+  fi
+
+  if [ -n "$RUN_CMD_DOES" ] && declare -F "$RUN_CMD_DOES" >/dev/null 2>&1; then
+    shift
+    "$RUN_CMD_DOES" "$@"
+  fi
+
+  if ! command -v "$RUN_CMD" >/dev/null 2>&1; then
+    printf 'Command: "%s" not found\n' "$RUN_CMD" >&2
+    exit 127
+  fi
+
+  exec "$@"
+}
+
+# Set command interceptions.
+run_does_edit() {
+  exec "$EDITOR" "$RUN_ENV_FILE"
+}
+
+# Set environment variables.
+export USE_RUN=1
+export PATH="$PATH:$PWD/bin"
+export CHANGES_FILE_CHANGES_MARKDOWN=CHANGES.md
+export CHANGES_FILE_CHANGES_PLAINTEXT=CHANGES
+export CHANGES_FILE_RELEASE_MARKDOWN=RELEASE.md
+export CHANGES_FILE_RELEASE_PLAINTEXT=RELEASE
+
+# Command executor.
+run_exec "$@"

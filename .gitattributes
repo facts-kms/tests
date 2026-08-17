@@ -1,0 +1,5 @@
+/.deploy/** linguist-documentation
+/.github/** linguist-documentation
+/bin/** linguist-documentation
+/docs/** linguist-documentation
+run linguist-documentation

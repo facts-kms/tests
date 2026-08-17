@@ -1,0 +1,11 @@
+[package]
+name = "fact-sim-dsl"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_yaml.workspace = true
+time.workspace = true

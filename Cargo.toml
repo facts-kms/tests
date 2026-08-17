@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/fact-sim-core",
+    "crates/fact-sim-dsl",
+    "crates/fact-sim-runner",
+    "crates/fact-sim-assert",
+    "crates/fact-sim-cli",
+    "crates/fact-sim-fixtures",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+rand = "0.9"
+rand_chacha = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "2"
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1", features = ["serde", "v7", "v4"] }
+
+fact-sdk = { path = "../sdk/crates/fact-sdk", features = ["deterministic-runtime"] }
+fact-canonical = { path = "../sdk/crates/fact-canonical" }
+fact-commitment = { path = "../sdk/crates/fact-commitment" }
+fact-core = { path = "../sdk/crates/fact-core" }
+fact-crypto = { path = "../sdk/crates/fact-crypto" }
+fact-store = { path = "../sdk/crates/fact-store" }
+libc = "0.2"
+rusqlite = "0.32"

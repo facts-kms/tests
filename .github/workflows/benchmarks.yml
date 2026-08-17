@@ -1,0 +1,463 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Benchmark suite to run
+        required: true
+        default: full
+        type: choice
+        options:
+          - core
+          - read
+          - search
+          - sync
+          - rebuild
+          - integrity
+          - cli
+          - conflict
+          - http
+          - full
+      fixture_base:
+        description: Directory containing generated benchmark fixtures
+        required: true
+        default: fixtures
+      output_dir:
+        description: Directory for benchmark reports
+        required: true
+        default: reports/benchmarks
+      iterations:
+        description: Measured iterations per benchmark
+        required: true
+        default: "30"
+      warmups:
+        description: Warmup iterations per benchmark
+        required: true
+        default: "5"
+      cache_state:
+        description: Compatibility cache-state label for per-fixture plan commands
+        required: true
+        default: warm-filesystem
+      generate_fixtures:
+        description: Generate any missing benchmark fixtures from the matrix plan before running baselines
+        required: true
+        default: false
+        type: boolean
+      require_ready:
+        description: Fail unless all required fixture profiles and levels are present
+        required: true
+        default: true
+        type: boolean
+      include_large:
+        description: Include the manual 500K large fixture level
+        required: true
+        default: false
+        type: boolean
+      comparison_baseline:
+        description: Optional baseline summary path to compare against the generated matrix summary
+        required: false
+        default: ""
+      comparison_thresholds:
+        description: Optional benchmark comparison threshold JSON path
+        required: false
+        default: ""
+jobs:
+  benchmark:
+    runs-on: [self-hosted, macOS, fact-benchmarks]
+    timeout-minutes: 1440
+    defaults:
+      run:
+        working-directory: fact-tests
+    env:
+      FACT_SOURCE_DIR: ../sdk
+      FACT_BINARY: ${{ github.workspace }}/cli/target/debug/fact
+      SUITE: ${{ inputs.suite || 'full' }}
+      FIXTURE_BASE: ${{ inputs.fixture_base || 'fixtures' }}
+      OUTPUT_DIR: ${{ inputs.output_dir || 'reports/benchmarks' }}
+      WARM_OUTPUT_DIR: ${{ inputs.output_dir || 'reports/benchmarks' }}/warm
+      COLD_OUTPUT_DIR: ${{ inputs.output_dir || 'reports/benchmarks' }}/cold
+      ITERATIONS: ${{ inputs.iterations || '30' }}
+      WARMUPS: ${{ inputs.warmups || '5' }}
+      PLAN_CACHE_STATE: ${{ inputs.cache_state || 'warm-filesystem' }}
+      GENERATE_FIXTURES: ${{ github.event_name == 'workflow_dispatch' && inputs.generate_fixtures == true && 'true' || 'false' }}
+      REQUIRE_READY: ${{ github.event_name == 'workflow_dispatch' && inputs.require_ready == false && 'false' || 'true' }}
+      INCLUDE_LARGE: ${{ github.event_name == 'workflow_dispatch' && inputs.include_large == true && 'true' || 'false' }}
+      COMPARISON_BASELINE: ${{ inputs.comparison_baseline || '' }}
+      COMPARISON_THRESHOLDS: ${{ inputs.comparison_thresholds || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: fact-tests
+      - uses: actions/checkout@v4
+        with:
+          repository: facts-kms/sdk
+          path: sdk
+      - uses: actions/checkout@v4
+        with:
+          repository: facts-kms/cli
+          path: cli
+
+      - name: Build fact CLI
+        run: cargo build --manifest-path ../cli/Cargo.toml --bin fact --locked
+
+      - name: Build release benchmark binary
+        run: cargo build --release -p fact-sim-cli
+
+      - name: Inspect benchmark fixture readiness
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          large_args=()
+          if [ "$INCLUDE_LARGE" = "true" ]; then
+            large_args+=(--include-large)
+          fi
+          ./target/release/fact-sim benchmark plan \
+            --suite "$SUITE" \
+            --fixture-base "$FIXTURE_BASE" \
+            --report-output "$OUTPUT_DIR" \
+            --iterations "$ITERATIONS" \
+            --warmups "$WARMUPS" \
+            --cache-state "$PLAN_CACHE_STATE" \
+            "${large_args[@]}" \
+            > "$OUTPUT_DIR/matrix-plan.json"
+          ./target/release/fact-sim benchmark fixtures \
+            --base "$FIXTURE_BASE" \
+            "${large_args[@]}" \
+            > "$OUTPUT_DIR/fixture-inventory.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          inventory = json.loads(Path(os.environ["OUTPUT_DIR"], "fixture-inventory.json").read_text())
+          print(json.dumps({
+              "ready": inventory.get("ready"),
+              "levels": inventory.get("levels"),
+              "missing_levels": inventory.get("missing_levels"),
+              "missing_profiles": inventory.get("missing_profiles"),
+              "missing_profile_levels": inventory.get("missing_profile_levels"),
+          }, indent=2))
+          if (
+              os.environ.get("REQUIRE_READY", "true").lower() == "true"
+              and os.environ.get("GENERATE_FIXTURES", "false").lower() != "true"
+              and not inventory.get("ready")
+          ):
+              raise SystemExit("benchmark fixture matrix is not ready")
+          PY
+
+      - name: Generate missing benchmark fixtures
+        if: ${{ env.GENERATE_FIXTURES == 'true' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          plan = json.loads(Path(os.environ["OUTPUT_DIR"], "matrix-plan.json").read_text())
+          for fixture in plan.get("fixtures", []):
+              fixture_path = Path(fixture["fixture"])
+              manifest = fixture_path / "manifest.json"
+              if manifest.exists():
+                  print(f"fixture present: {fixture_path}")
+                  continue
+              command = [
+                  "./target/release/fact-sim",
+                  "generate",
+                  "--profile",
+                  fixture["profile"],
+                  "--seed",
+                  str(fixture["seed"]),
+                  "--target-propositions",
+                  str(fixture["target_propositions"]),
+                  "--output",
+                  str(fixture_path),
+              ]
+              print("+ " + " ".join(command))
+              subprocess.run(command, check=True)
+
+          for fixture in plan.get("fixtures", []):
+              fixture_path = Path(fixture["fixture"])
+              command = ["./target/release/fact-sim", "verify", str(fixture_path)]
+              print("+ " + " ".join(command))
+              subprocess.run(command, check=True)
+          PY
+          large_args=()
+          if [ "$INCLUDE_LARGE" = "true" ]; then
+            large_args+=(--include-large)
+          fi
+          ./target/release/fact-sim benchmark fixtures \
+            --base "$FIXTURE_BASE" \
+            "${large_args[@]}" \
+            > "$OUTPUT_DIR/fixture-inventory.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          inventory = json.loads(Path(os.environ["OUTPUT_DIR"], "fixture-inventory.json").read_text())
+          print(json.dumps({
+              "ready": inventory.get("ready"),
+              "missing_profile_levels": inventory.get("missing_profile_levels"),
+          }, indent=2))
+          if os.environ.get("REQUIRE_READY", "true").lower() == "true" and not inventory.get("ready"):
+              raise SystemExit("benchmark fixture matrix is not ready after generation")
+          PY
+
+      - name: Run benchmark baseline matrix
+        run: |
+          require_ready_args=()
+          if [ "$REQUIRE_READY" = "true" ]; then
+            require_ready_args+=(--require-ready)
+          fi
+          large_args=()
+          if [ "$INCLUDE_LARGE" = "true" ]; then
+            large_args+=(--include-large)
+          fi
+          ./target/release/fact-sim benchmark baseline \
+            --suite "$SUITE" \
+            --base "$FIXTURE_BASE" \
+            --output "$WARM_OUTPUT_DIR" \
+            --iterations "$ITERATIONS" \
+            --warmups "$WARMUPS" \
+            --cache-state "warm-filesystem" \
+            "${require_ready_args[@]}" \
+            "${large_args[@]}" \
+            > "$OUTPUT_DIR/warm-baseline-summary.json"
+          ./target/release/fact-sim benchmark baseline \
+            --suite "$SUITE" \
+            --base "$FIXTURE_BASE" \
+            --output "$COLD_OUTPUT_DIR" \
+            --iterations "$ITERATIONS" \
+            --warmups 0 \
+            --cache-state "cold-filesystem" \
+            "${require_ready_args[@]}" \
+            "${large_args[@]}" \
+            > "$OUTPUT_DIR/cold-baseline-summary.json"
+
+      - name: Audit benchmark readiness
+        run: |
+          large_args=()
+          if [ "$INCLUDE_LARGE" = "true" ]; then
+            large_args+=(--include-large)
+          fi
+          ./target/release/fact-sim benchmark audit \
+            --base "$FIXTURE_BASE" \
+            "${large_args[@]}" \
+            --baseline-summary "$OUTPUT_DIR/warm-baseline-summary.json" \
+            --baseline-summary "$OUTPUT_DIR/cold-baseline-summary.json" \
+            > "$OUTPUT_DIR/readiness-audit.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          audit = json.loads(Path(os.environ["OUTPUT_DIR"], "readiness-audit.json").read_text())
+          print(json.dumps({
+              "ready": audit.get("ready"),
+              "fixture_matrix_ready": audit.get("fixture_matrix_ready"),
+              "missing_suites": audit.get("missing_suites"),
+              "missing_areas": audit.get("missing_areas"),
+              "missing_cli_workflows": audit.get("missing_cli_workflows"),
+              "missing_sampled_cli_workflows": audit.get("missing_sampled_cli_workflows"),
+              "missing_cache_temperatures": audit.get("missing_cache_temperatures"),
+              "missing_baseline_profile_levels": audit.get("missing_baseline_profile_levels"),
+              "missing_cache_profile_levels": audit.get("missing_cache_profile_levels"),
+              "missing_report_files": audit.get("missing_report_files"),
+              "invalid_report_files": audit.get("invalid_report_files"),
+              "missing_environment_manifests": audit.get("missing_environment_manifests"),
+              "invalid_environment_metadata": audit.get("invalid_environment_metadata"),
+              "missing_reproduce_commands": audit.get("missing_reproduce_commands"),
+              "non_release_environment_manifests": audit.get("non_release_environment_manifests"),
+              "non_release_reports": audit.get("non_release_reports"),
+              "not_ready_summaries": audit.get("not_ready_summaries"),
+              "failing_summaries": audit.get("failing_summaries"),
+              "fixture_metadata_mismatches": audit.get("fixture_metadata_mismatches"),
+              "missing_fixture_metadata": audit.get("missing_fixture_metadata"),
+              "invalid_report_counts": audit.get("invalid_report_counts"),
+              "invalid_baseline_summaries": audit.get("invalid_baseline_summaries"),
+              "invalid_cache_labels": audit.get("invalid_cache_labels"),
+              "invalid_cache_metadata": audit.get("invalid_cache_metadata"),
+              "insufficient_warmup_iterations": audit.get("insufficient_warmup_iterations"),
+              "missing_failure_logs": audit.get("missing_failure_logs"),
+              "invalid_failure_logs": audit.get("invalid_failure_logs"),
+              "missing_report_metadata": audit.get("missing_report_metadata"),
+              "missing_benchmark_metadata": audit.get("missing_benchmark_metadata"),
+              "invalid_requirement_tags": audit.get("invalid_requirement_tags"),
+              "missing_bottleneck_summaries": audit.get("missing_bottleneck_summaries"),
+              "invalid_bottleneck_summaries": audit.get("invalid_bottleneck_summaries"),
+              "insufficient_baseline_iterations": audit.get("insufficient_baseline_iterations"),
+              "insufficient_sample_benchmarks": audit.get("insufficient_sample_benchmarks"),
+              "invalid_sample_observations": audit.get("invalid_sample_observations"),
+              "invalid_phase_metadata": audit.get("invalid_phase_metadata"),
+              "invalid_resource_metadata": audit.get("invalid_resource_metadata"),
+              "invalid_sqlite_metadata": audit.get("invalid_sqlite_metadata"),
+              "invalid_timing_statistics": audit.get("invalid_timing_statistics"),
+              "incorrect_benchmarks": audit.get("incorrect_benchmarks"),
+          }, indent=2))
+          if os.environ.get("REQUIRE_READY", "true").lower() == "true" and not audit.get("ready"):
+              raise SystemExit("benchmark readiness audit failed")
+          PY
+
+      - name: Analyze benchmark growth
+        run: |
+          ./target/release/fact-sim benchmark analyze \
+            --baseline-summary "$OUTPUT_DIR/warm-baseline-summary.json" \
+            > "$OUTPUT_DIR/growth-analysis.json"
+
+      - name: Derive provisional benchmark budgets
+        run: |
+          ./target/release/fact-sim benchmark budgets \
+            --baseline-summary "$OUTPUT_DIR/warm-baseline-summary.json" \
+            > "$OUTPUT_DIR/budgets.json"
+          ./target/release/fact-sim benchmark check-budgets \
+            --budgets "$OUTPUT_DIR/budgets.json" \
+            --baseline-summary "$OUTPUT_DIR/warm-baseline-summary.json" \
+            > "$OUTPUT_DIR/budget-check.json"
+
+      - name: Select profiling candidates
+        run: |
+          ./target/release/fact-sim benchmark profile-plan \
+            --baseline-summary "$OUTPUT_DIR/warm-baseline-summary.json" \
+            > "$OUTPUT_DIR/profile-plan.json"
+
+      - name: Summarize benchmark acceptance
+        run: |
+          ./target/release/fact-sim benchmark accept \
+            --audit "$OUTPUT_DIR/readiness-audit.json" \
+            --growth-analysis "$OUTPUT_DIR/growth-analysis.json" \
+            --budget-check "$OUTPUT_DIR/budget-check.json" \
+            --profile-plan "$OUTPUT_DIR/profile-plan.json" \
+            > "$OUTPUT_DIR/acceptance.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          acceptance = json.loads(Path(os.environ["OUTPUT_DIR"], "acceptance.json").read_text())
+          print(json.dumps({
+              "accepted": acceptance.get("accepted"),
+              "blockers": acceptance.get("blockers"),
+              "total_reports": acceptance.get("total_reports"),
+              "total_benchmarks": acceptance.get("total_benchmarks"),
+              "growth_trend_count": acceptance.get("growth_trend_count"),
+              "budget_regression_count": acceptance.get("budget_regression_count"),
+              "profile_candidate_count": acceptance.get("profile_candidate_count"),
+              "blocker_evidence": acceptance.get("blocker_evidence"),
+          }, indent=2))
+          if os.environ.get("REQUIRE_READY", "true").lower() == "true" and not acceptance.get("accepted"):
+              raise SystemExit("benchmark acceptance failed")
+          PY
+
+      - name: Render human benchmark summaries
+        run: |
+          mkdir -p "$OUTPUT_DIR/human"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/matrix-plan.json" \
+            > "$OUTPUT_DIR/human/matrix-plan.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/fixture-inventory.json" \
+            > "$OUTPUT_DIR/human/fixture-inventory.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/warm-baseline-summary.json" \
+            > "$OUTPUT_DIR/human/warm-baseline-summary.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/cold-baseline-summary.json" \
+            > "$OUTPUT_DIR/human/cold-baseline-summary.md"
+          ./target/release/fact-sim benchmark report \
+            "$WARM_OUTPUT_DIR/failure-log.json" \
+            > "$OUTPUT_DIR/human/warm-failure-log.md"
+          ./target/release/fact-sim benchmark report \
+            "$COLD_OUTPUT_DIR/failure-log.json" \
+            > "$OUTPUT_DIR/human/cold-failure-log.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/readiness-audit.json" \
+            > "$OUTPUT_DIR/human/readiness-audit.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/growth-analysis.json" \
+            > "$OUTPUT_DIR/human/growth-analysis.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/budgets.json" \
+            > "$OUTPUT_DIR/human/budgets.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/budget-check.json" \
+            > "$OUTPUT_DIR/human/budget-check.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/profile-plan.json" \
+            > "$OUTPUT_DIR/human/profile-plan.md"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/acceptance.json" \
+            > "$OUTPUT_DIR/human/acceptance.md"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          for summary_name in ("warm-baseline-summary.json", "cold-baseline-summary.json"):
+              summary = json.loads(Path(os.environ["OUTPUT_DIR"], summary_name).read_text())
+              for report in summary.get("reports", []):
+                  source = Path(report["report"])
+                  target = Path(os.environ["OUTPUT_DIR"], "human", source.parent.name + "-" + source.with_suffix(".md").name)
+                  rendered = subprocess.check_output([
+                      "./target/release/fact-sim",
+                      "benchmark",
+                      "report",
+                      str(source),
+                  ])
+                  target.write_bytes(rendered)
+          PY
+
+      - name: Compare against optional baseline
+        if: ${{ env.COMPARISON_BASELINE != '' }}
+        run: |
+          threshold_args=()
+          if [ -n "$COMPARISON_THRESHOLDS" ]; then
+            threshold_args+=(--thresholds "$COMPARISON_THRESHOLDS")
+          fi
+          ./target/release/fact-sim benchmark compare-matrix \
+            "${threshold_args[@]}" \
+            "$COMPARISON_BASELINE" \
+            "$OUTPUT_DIR/warm-baseline-summary.json" \
+            > "$OUTPUT_DIR/comparison.json"
+          mkdir -p "$OUTPUT_DIR/human"
+          ./target/release/fact-sim benchmark report \
+            "$OUTPUT_DIR/comparison.json" \
+            > "$OUTPUT_DIR/human/comparison.md"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          comparison = json.loads(Path(os.environ["OUTPUT_DIR"], "comparison.json").read_text())
+          print(json.dumps({
+              "regression_decision_ready": comparison.get("regression_decision_ready"),
+              "regression_decision_blockers": comparison.get("regression_decision_blockers"),
+              "total_regressions": comparison.get("total_regressions"),
+              "total_warnings": comparison.get("total_warnings"),
+              "total_improvements": comparison.get("total_improvements"),
+              "total_incorrect_current_benchmarks": comparison.get("total_incorrect_current_benchmarks"),
+              "total_environment_incompatible_reports": comparison.get("total_environment_incompatible_reports"),
+              "total_environment_differences": comparison.get("total_environment_differences"),
+              "total_fixture_incompatible_reports": comparison.get("total_fixture_incompatible_reports"),
+              "total_fixture_differences": comparison.get("total_fixture_differences"),
+              "total_cache_incompatible_reports": comparison.get("total_cache_incompatible_reports"),
+              "total_cache_differences": comparison.get("total_cache_differences"),
+              "missing_in_current": comparison.get("missing_in_current"),
+              "new_in_current": comparison.get("new_in_current"),
+              "failures": comparison.get("failures"),
+          }, indent=2))
+          if (
+              os.environ.get("REQUIRE_READY", "true").lower() == "true"
+              and not comparison.get("regression_decision_ready")
+          ):
+              raise SystemExit("benchmark comparison is not ready for regression decisions")
+          PY
+
+      - name: Upload benchmark reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-reports
+          path: fact-tests/${{ env.OUTPUT_DIR }}
+          if-no-files-found: error

@@ -1,0 +1,772 @@
+#!/usr/bin/env bash
+
+# Copyright © 2024 Al Newkirk. All rights reserved.
+
+# Program Variables
+DEPLOY_VARS_PROG=$(basename $0)
+DEPLOY_VARS_SVER="0.1.0"
+DEPLOY_VARS_HELP=0
+DEPLOY_VARS_CLI_CMD=""
+
+# Path Variables
+export DEPLOY_PATH=${DEPLOY_PATH:=.deploy}
+export DEPLOY_PATH_CONFIG=${DEPLOY_CONFIG:=${DEPLOY_PATH_CONFIG:=$DEPLOY_PATH/config}}
+export DEPLOY_PATH_LOGS=${DEPLOY_LOGS:=${DEPLOY_PATH_LOGS:=$DEPLOY_PATH/logs}}
+export DEPLOY_PATH_PHASES=${DEPLOY_PHASES:=${DEPLOY_PATH_PHASES:=$DEPLOY_PATH/phases}}
+
+# Configuration Variables
+export DEPLOY_CONF_STATUS=${DEPLOY_STATUS:=1}
+export DEPLOY_CONF_VERBOSE=${DEPLOY_VERBOSE:=1}
+export DEPLOY_CONF_TIMEOUT=${DEPLOY_TIMEOUT:=}
+
+# Default Configuration
+DEPLOY_VARS_DEFAULT_CONFIG="
+lint * ./.deploy/phases/lint
+test * ./.deploy/phases/test
+build *-build-* ./.deploy/phases/build
+release *-release-* ./.deploy/phases/release
+deploy *-deploy-* ./.deploy/phases/deploy"
+
+# Utility Functions
+function deploy_get_branch() {
+  local branch
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [ $? -ne 0 ]; then
+    echo ""
+    return 1
+  fi
+  echo "$branch"
+  return 0
+}
+
+function deploy_get_config_lines() {
+  local config_source
+  if [ -f "$DEPLOY_PATH_CONFIG" ]; then
+    config_source=$(cat "$DEPLOY_PATH_CONFIG")
+  else
+    config_source="$DEPLOY_VARS_DEFAULT_CONFIG"
+  fi
+  echo "$config_source"
+}
+
+function deploy_get_parsed_config() {
+  local config_source
+  config_source=$(deploy_get_config_lines)
+  local parsed=""
+  while IFS= read -r line; do
+    local trimmed
+    trimmed=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+    [ -z "$trimmed" ] && continue
+    local col_count
+    col_count=$(echo "$trimmed" | awk '{print NF}')
+    [ "$col_count" -ne 3 ] && continue
+    if [ -n "$parsed" ]; then
+      parsed="${parsed}"$'\n'"${trimmed}"
+    else
+      parsed="${trimmed}"
+    fi
+  done <<< "$config_source"
+  echo "$parsed"
+}
+
+function deploy_get_matched_phases() {
+  local branch="$1"
+  local config
+  config=$(deploy_get_parsed_config)
+  [ -z "$config" ] && return 0
+  while IFS= read -r line; do
+    local phase pattern script
+    phase=$(echo "$line" | awk '{print $1}')
+    pattern=$(echo "$line" | awk '{print $2}')
+    script=$(echo "$line" | awk '{print $3}')
+    if [[ "$branch" == $pattern ]]; then
+      echo "${phase} ${script}"
+    fi
+  done <<< "$config"
+}
+
+function deploy_get_glob_as_regex() {
+  local glob="$1"
+  local regex="$glob"
+  regex=$(echo "$regex" | sed 's/\./\\./g')
+  regex=$(echo "$regex" | sed 's/\*/.*/g')
+  regex=$(echo "$regex" | sed 's/\?/./g')
+  echo "$regex"
+}
+
+function deploy_export_path_vars() {
+  export DEPLOY_PATH="${DEPLOY_PATH:=$DEPLOY_PATH}"
+  export DEPLOY_CONFIG="${DEPLOY_CONFIG:=$DEPLOY_PATH_CONFIG}"
+  export DEPLOY_LOGS="${DEPLOY_LOGS:=$DEPLOY_PATH_LOGS}"
+  export DEPLOY_PHASES="${DEPLOY_PHASES:=$DEPLOY_PATH_PHASES}"
+}
+
+function deploy_set_status_line() {
+  local phase="$1"
+  local result="$2"
+  local script="$3"
+  if [ "$DEPLOY_CONF_STATUS" -eq 1 ]; then
+    echo "Phase [${phase}] ${result} ${script}"
+  fi
+}
+
+# Error Handler
+function deploy_set_error_message() {
+  local message=$1
+  local code=${2:-1}
+  local timestamp
+  timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  mkdir -p "$DEPLOY_PATH_LOGS" 2>/dev/null
+  echo "[$timestamp] ERROR: $message" >> "$DEPLOY_PATH_LOGS/errors.log"
+  echo "Error: $message" >&2
+  exit $code
+}
+
+# Command Functions
+function deploy_cmd_run() {
+  local branch
+  branch=$(deploy_get_branch)
+  if [ $? -ne 0 ] || [ -z "$branch" ]; then
+    echo "Warning: Not a Git repository. Running wildcard phases only." >&2
+    branch="__no_branch__"
+  fi
+
+  local matched
+  matched=$(deploy_get_matched_phases "$branch")
+
+  if [ -z "$matched" ]; then
+    echo "No phases matched for branch: $branch"
+    exit 0
+  fi
+
+  mkdir -p "$DEPLOY_PATH_LOGS" 2>/dev/null
+  deploy_export_path_vars
+
+  local exit_code=0
+  while IFS= read -r entry; do
+    local phase script
+    phase=$(echo "$entry" | awk '{print $1}')
+    script=$(echo "$entry" | awk '{print $2}')
+
+    if [ ! -f "$script" ] || [ ! -x "$script" ]; then
+      deploy_set_status_line "$phase" "FAILED" "$script"
+      deploy_set_error_message "Phase script not found or not executable: $script"
+    fi
+
+    local log_file="$DEPLOY_PATH_LOGS/${phase}.log"
+    local phase_exit
+
+    if [ -n "$DEPLOY_CONF_TIMEOUT" ]; then
+      if [ "$DEPLOY_CONF_VERBOSE" -eq 1 ]; then
+        timeout "$DEPLOY_CONF_TIMEOUT" "$script" "$@" 2>&1 | tee "$log_file"
+        phase_exit=${PIPESTATUS[0]}
+      else
+        timeout "$DEPLOY_CONF_TIMEOUT" "$script" "$@" > "$log_file" 2>&1
+        phase_exit=$?
+      fi
+    else
+      if [ "$DEPLOY_CONF_VERBOSE" -eq 1 ]; then
+        "$script" "$@" 2>&1 | tee "$log_file"
+        phase_exit=${PIPESTATUS[0]}
+      else
+        "$script" "$@" > "$log_file" 2>&1
+        phase_exit=$?
+      fi
+    fi
+
+    if [ $phase_exit -eq 0 ]; then
+      deploy_set_status_line "$phase" "PASSED" "$script"
+    else
+      deploy_set_status_line "$phase" "FAILED" "$script"
+      exit $phase_exit
+    fi
+  done <<< "$matched"
+
+  exit 0
+}
+
+function deploy_cmd_init() {
+  if [ -d "$DEPLOY_PATH" ]; then
+    echo "Directory '${DEPLOY_PATH}/' already exists."
+    echo "Checking for missing components..."
+  fi
+
+  mkdir -p "$DEPLOY_PATH_PHASES" 2>/dev/null
+  mkdir -p "$DEPLOY_PATH_LOGS" 2>/dev/null
+
+  if [ ! -f "$DEPLOY_PATH_CONFIG" ]; then
+    cat > "$DEPLOY_PATH_CONFIG" << CONFIGEOF
+# Phase    Branch-Pattern    Script-Path
+lint       *                 ./${DEPLOY_PATH_PHASES}/lint
+test       *                 ./${DEPLOY_PATH_PHASES}/test
+build      *-build-*         ./${DEPLOY_PATH_PHASES}/build
+release    *-release-*       ./${DEPLOY_PATH_PHASES}/release
+deploy     *-deploy-*        ./${DEPLOY_PATH_PHASES}/deploy
+CONFIGEOF
+    echo "Created $DEPLOY_PATH_CONFIG"
+  fi
+
+  local phases=("lint" "test" "build" "release" "deploy")
+  for phase in "${phases[@]}"; do
+    if [ ! -f "${DEPLOY_PATH_PHASES}/$phase" ]; then
+      cat > "${DEPLOY_PATH_PHASES}/$phase" << STUBEOF
+#!/usr/bin/env bash
+
+echo "Phase [$phase] START \$0"
+
+# TODO: implement $phase phase
+STUBEOF
+      chmod +x "${DEPLOY_PATH_PHASES}/$phase"
+      echo "Created ${DEPLOY_PATH_PHASES}/$phase"
+    fi
+  done
+
+  if [ ! -f ".gitignore" ]; then
+    echo "${DEPLOY_PATH_LOGS}/" > ".gitignore"
+    echo "Created .gitignore with ${DEPLOY_PATH_LOGS}/"
+  fi
+
+  echo "DEPLOY project structure initialized."
+  exit 0
+}
+
+function deploy_cmd_edit() {
+  local editor="${EDITOR:-vi}"
+
+  if [ $# -eq 0 ]; then
+    if [ ! -f "$DEPLOY_PATH_CONFIG" ]; then
+      deploy_set_error_message "Config file not found at $DEPLOY_PATH_CONFIG. Run '$DEPLOY_VARS_PROG init' first."
+    fi
+    "$editor" "$DEPLOY_PATH_CONFIG"
+    exit 0
+  fi
+
+  local target_phase="$1"
+  local config
+  config=$(deploy_get_parsed_config)
+
+  if [ -z "$config" ]; then
+    deploy_set_error_message "No configuration found. Run '$DEPLOY_VARS_PROG init' first."
+  fi
+
+  local scripts=()
+  while IFS= read -r line; do
+    local phase script
+    phase=$(echo "$line" | awk '{print $1}')
+    script=$(echo "$line" | awk '{print $3}')
+    if [ "$phase" = "$target_phase" ]; then
+      scripts+=("$script")
+    fi
+  done <<< "$config"
+
+  if [ ${#scripts[@]} -eq 0 ]; then
+    deploy_set_error_message "Unknown phase: $target_phase"
+  fi
+
+  "$editor" "${scripts[@]}"
+  exit 0
+}
+
+function deploy_cmd_phase() {
+  if [ $# -lt 1 ]; then
+    deploy_set_error_message "Usage: $DEPLOY_VARS_PROG phase <name> [args...]"
+  fi
+
+  local target_phase="$1"
+  shift
+
+  local branch
+  branch=$(deploy_get_branch)
+  if [ $? -ne 0 ] || [ -z "$branch" ]; then
+    echo "Warning: Not a Git repository. Running wildcard phases only." >&2
+    branch="__no_branch__"
+  fi
+
+  local config
+  config=$(deploy_get_parsed_config)
+  local found=0
+  local matched=0
+
+  [ -z "$config" ] && deploy_set_error_message "No configuration found."
+
+  mkdir -p "$DEPLOY_PATH_LOGS" 2>/dev/null
+  deploy_export_path_vars
+
+  while IFS= read -r line; do
+    local phase pattern script
+    phase=$(echo "$line" | awk '{print $1}')
+    pattern=$(echo "$line" | awk '{print $2}')
+    script=$(echo "$line" | awk '{print $3}')
+
+    [ "$phase" != "$target_phase" ] && continue
+    found=1
+
+    if [[ "$branch" == $pattern ]]; then
+      matched=1
+
+      if [ ! -f "$script" ] || [ ! -x "$script" ]; then
+        deploy_set_status_line "$phase" "FAILED" "$script"
+        deploy_set_error_message "Phase script not found or not executable: $script"
+      fi
+
+      local log_file="$DEPLOY_PATH_LOGS/${phase}.log"
+      local phase_exit
+
+      if [ -n "$DEPLOY_CONF_TIMEOUT" ]; then
+        if [ "$DEPLOY_CONF_VERBOSE" -eq 1 ]; then
+          timeout "$DEPLOY_CONF_TIMEOUT" "$script" "$@" 2>&1 | tee "$log_file"
+          phase_exit=${PIPESTATUS[0]}
+        else
+          timeout "$DEPLOY_CONF_TIMEOUT" "$script" "$@" > "$log_file" 2>&1
+          phase_exit=$?
+        fi
+      else
+        if [ "$DEPLOY_CONF_VERBOSE" -eq 1 ]; then
+          "$script" "$@" 2>&1 | tee "$log_file"
+          phase_exit=${PIPESTATUS[0]}
+        else
+          "$script" "$@" > "$log_file" 2>&1
+          phase_exit=$?
+        fi
+      fi
+
+      if [ $phase_exit -eq 0 ]; then
+        deploy_set_status_line "$phase" "PASSED" "$script"
+      else
+        deploy_set_status_line "$phase" "FAILED" "$script"
+        exit $phase_exit
+      fi
+    fi
+  done <<< "$config"
+
+  if [ $found -eq 0 ]; then
+    deploy_set_error_message "Unknown phase: $target_phase"
+  fi
+
+  if [ $matched -eq 0 ]; then
+    deploy_set_error_message "Phase '$target_phase' does not match branch '$branch'"
+  fi
+
+  exit 0
+}
+
+function deploy_cmd_config() {
+  local config
+  config=$(deploy_get_parsed_config)
+  local using_defaults=0
+
+  if [ ! -f "$DEPLOY_PATH_CONFIG" ]; then
+    using_defaults=1
+  fi
+
+  local branch
+  branch=$(deploy_get_branch)
+  local no_git=0
+  if [ $? -ne 0 ] || [ -z "$branch" ]; then
+    no_git=1
+    branch="__no_branch__"
+  fi
+
+  echo "DEPLOY Configuration"
+  echo "==================="
+  echo ""
+  echo "Config file:  $DEPLOY_PATH_CONFIG$([ $using_defaults -eq 1 ] && echo ' (not found, using defaults)')"
+  echo "Logs dir:     $DEPLOY_PATH_LOGS"
+  echo "Branch:       $([ $no_git -eq 1 ] && echo '(no git repository)' || echo "$branch")"
+  echo "Timeout:      $([ -n "$DEPLOY_CONF_TIMEOUT" ] && echo "${DEPLOY_CONF_TIMEOUT}s" || echo 'none')"
+  echo "Status lines: $([ "$DEPLOY_CONF_STATUS" -eq 1 ] && echo 'on' || echo 'off')"
+  echo "Verbose:      $([ "$DEPLOY_CONF_VERBOSE" -eq 1 ] && echo 'on' || echo 'off')"
+  echo ""
+  echo "Phase Rules:"
+  echo "-------------------------------------------"
+  printf "%-12s %-18s %s\n" "PHASE" "PATTERN" "SCRIPT"
+  echo "-------------------------------------------"
+
+  if [ -z "$config" ]; then
+    echo "(no rules)"
+  else
+    while IFS= read -r line; do
+      local phase pattern script
+      phase=$(echo "$line" | awk '{print $1}')
+      pattern=$(echo "$line" | awk '{print $2}')
+      script=$(echo "$line" | awk '{print $3}')
+      local match_indicator=""
+      if [[ "$branch" == $pattern ]]; then
+        match_indicator=" <-- matches"
+      fi
+      printf "%-12s %-18s %s%s\n" "$phase" "$pattern" "$script" "$match_indicator"
+    done <<< "$config"
+  fi
+
+  echo ""
+  exit 0
+}
+
+function deploy_cmd_gitlab() {
+  if [ -f ".gitlab-ci.yml" ]; then
+    deploy_set_error_message ".gitlab-ci.yml already exists. Refusing to overwrite."
+  fi
+
+  local config
+  config=$(deploy_get_parsed_config)
+
+  if [ -z "$config" ]; then
+    deploy_set_error_message "No configuration found. Run '$DEPLOY_VARS_PROG init' first."
+  fi
+
+  local stages=""
+  local jobs=""
+  local seen_stages=""
+  local last_wildcard_job=""
+  local seen=""
+  local line_num=0
+
+  while IFS= read -r line; do
+    line_num=$((line_num + 1))
+    echo "$seen" | grep -q "^${line_num}$" && continue
+
+    local phase pattern script
+    phase=$(echo "$line" | awk '{print $1}')
+    pattern=$(echo "$line" | awk '{print $2}')
+    script=$(echo "$line" | awk '{print $3}')
+
+    local scripts="$script"
+
+    # Inner loop: look ahead for same phase+pattern
+    local inner_num=0
+    while IFS= read -r inner_line; do
+      inner_num=$((inner_num + 1))
+      [ "$inner_num" -le "$line_num" ] && continue
+      echo "$seen" | grep -q "^${inner_num}$" && continue
+      local inner_phase inner_pattern inner_script
+      inner_phase=$(echo "$inner_line" | awk '{print $1}')
+      inner_pattern=$(echo "$inner_line" | awk '{print $2}')
+      inner_script=$(echo "$inner_line" | awk '{print $3}')
+      if [ "$inner_phase" = "$phase" ] && [ "$inner_pattern" = "$pattern" ]; then
+        scripts="${scripts}"$'\n'"${inner_script}"
+        seen="${seen}${inner_num}"$'\n'
+      fi
+    done <<< "$config"
+
+    local stage_name="${phase}"
+    if ! echo "$seen_stages" | grep -qw "$stage_name"; then
+      if [ -n "$seen_stages" ]; then
+        stages="${stages}"$'\n'"  - ${stage_name}"
+      else
+        stages="  - ${stage_name}"
+      fi
+      seen_stages="${seen_stages} ${stage_name}"
+    fi
+
+    local job_name="${phase}"
+    if echo "$jobs" | grep -q "^${phase}:$"; then
+      job_name="${phase}_$(echo "$pattern" | sed 's/[^a-zA-Z0-9]/_/g')"
+    fi
+
+    local needs_block=""
+    local rule
+    if [ "$pattern" = "*" ]; then
+      rule="    - if: \$CI_PIPELINE_SOURCE == \"merge_request_event\""
+      if [ -n "$last_wildcard_job" ]; then
+        needs_block="
+  needs:
+    - ${last_wildcard_job}"
+      fi
+      last_wildcard_job="$job_name"
+    else
+      local regex
+      regex=$(deploy_get_glob_as_regex "$pattern")
+      rule="    - if: \$CI_PIPELINE_SOURCE == \"merge_request_event\" && \$CI_COMMIT_REF_NAME =~ /${regex}/"
+      if [ -n "$last_wildcard_job" ]; then
+        needs_block="
+  needs:
+    - ${last_wildcard_job}"
+      fi
+    fi
+
+    local script_block=""
+    while IFS= read -r s; do
+      script_block="${script_block}
+    - ${s}"
+    done <<< "$scripts"
+
+    jobs="${jobs}
+${job_name}:
+  stage: ${stage_name}
+  image: ubuntu:22.04
+  script:${script_block}${needs_block}
+  rules:
+${rule}
+"
+  done <<< "$config"
+
+  cat > ".gitlab-ci.yml" << GLEOF
+# Generated by deploy v${DEPLOY_VARS_SVER}
+# Do not edit manually. Regenerate with: deploy gitlab
+
+stages:
+${stages}
+${jobs}
+GLEOF
+
+  echo "Generated .gitlab-ci.yml"
+  exit 0
+}
+
+function deploy_cmd_github() {
+  if [ -f ".github/workflows/deploy.yml" ]; then
+    deploy_set_error_message ".github/workflows/deploy.yml already exists. Refusing to overwrite."
+  fi
+
+  local config
+  config=$(deploy_get_parsed_config)
+
+  if [ -z "$config" ]; then
+    deploy_set_error_message "No configuration found. Run '$DEPLOY_VARS_PROG init' first."
+  fi
+
+  mkdir -p ".github/workflows" 2>/dev/null
+
+  local jobs_block=""
+  local last_wildcard_job=""
+  local seen=""
+  local line_num=0
+
+  while IFS= read -r line; do
+    line_num=$((line_num + 1))
+    echo "$seen" | grep -q "^${line_num}$" && continue
+
+    local phase pattern script
+    phase=$(echo "$line" | awk '{print $1}')
+    pattern=$(echo "$line" | awk '{print $2}')
+    script=$(echo "$line" | awk '{print $3}')
+
+    local scripts="$script"
+
+    # Inner loop: look ahead for same phase+pattern
+    local inner_num=0
+    while IFS= read -r inner_line; do
+      inner_num=$((inner_num + 1))
+      [ "$inner_num" -le "$line_num" ] && continue
+      echo "$seen" | grep -q "^${inner_num}$" && continue
+      local inner_phase inner_pattern inner_script
+      inner_phase=$(echo "$inner_line" | awk '{print $1}')
+      inner_pattern=$(echo "$inner_line" | awk '{print $2}')
+      inner_script=$(echo "$inner_line" | awk '{print $3}')
+      if [ "$inner_phase" = "$phase" ] && [ "$inner_pattern" = "$pattern" ]; then
+        scripts="${scripts}"$'\n'"${inner_script}"
+        seen="${seen}${inner_num}"$'\n'
+      fi
+    done <<< "$config"
+
+    local job_id="${phase}"
+    local sanitized
+    sanitized=$(echo "$pattern" | sed 's/[^a-zA-Z0-9]/_/g')
+    if echo "$jobs_block" | grep -q "  ${phase}:"; then
+      job_id="${phase}_${sanitized}"
+    fi
+
+    local needs_line=""
+    local if_line=""
+    if [ "$pattern" = "*" ]; then
+      if [ -n "$last_wildcard_job" ]; then
+        needs_line="
+    needs: [${last_wildcard_job}]"
+      fi
+      last_wildcard_job="$job_id"
+    else
+      local regex
+      regex=$(deploy_get_glob_as_regex "$pattern")
+      if_line="
+    if: contains(github.ref_name, '$(echo "$pattern" | sed "s/\*//g")')"
+      if [ -n "$last_wildcard_job" ]; then
+        needs_line="
+    needs: [${last_wildcard_job}]"
+      fi
+    fi
+
+    local run_block=""
+    while IFS= read -r s; do
+      run_block="${run_block}
+          ${s}"
+    done <<< "$scripts"
+
+    jobs_block="${jobs_block}
+  ${job_id}:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04${needs_line}${if_line}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ${phase}
+        run: |${run_block}
+"
+  done <<< "$config"
+
+  cat > ".github/workflows/deploy.yml" << GHEOF
+# Generated by deploy v${DEPLOY_VARS_SVER}
+# Do not edit manually. Regenerate with: deploy github
+
+name: DEPLOY Pipeline
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+jobs:${jobs_block}
+GHEOF
+
+  echo "Generated .github/workflows/deploy.yml"
+  exit 0
+}
+
+function deploy_cmd_hook() {
+  local git_dir
+  git_dir=$(git rev-parse --git-dir 2>/dev/null)
+  if [ $? -ne 0 ] || [ -z "$git_dir" ]; then
+    deploy_set_error_message "Not a Git repository. Cannot install hook."
+  fi
+
+  local hooks_dir="${git_dir}/hooks"
+  local hook_file="${hooks_dir}/pre-push"
+
+  if [ -f "$hook_file" ]; then
+    deploy_set_error_message "pre-push hook already exists at ${hook_file}. Refusing to overwrite."
+  fi
+
+  mkdir -p "$hooks_dir" 2>/dev/null
+
+  cat > "$hook_file" << HOOKEOF
+#!/usr/bin/env bash
+# Generated by deploy hook
+# Runs deploy phases before push. Non-zero exit blocks the push.
+
+DEPLOY_BIN=\$(command -v deploy 2>/dev/null)
+
+if [ -z "\$DEPLOY_BIN" ]; then
+  DEPLOY_BIN="$0"
+fi
+
+if [ ! -x "\$DEPLOY_BIN" ]; then
+  echo "Error: deploy not found in PATH or at \$DEPLOY_BIN" >&2
+  exit 1
+fi
+
+DEPLOY_STATUS=1 DEPLOY_VERBOSE=0 "\$DEPLOY_BIN"
+HOOKEOF
+
+  chmod +x "$hook_file"
+  echo "Installed pre-push hook at ${hook_file}"
+  exit 0
+}
+
+# Help Function
+function deploy_cmd_get_help() {
+  cat << EOF
+Usage: $DEPLOY_VARS_PROG [COMMAND] [ARGS...]
+
+Automate software development lifecycle phases locally and remotely.
+See '$DEPLOY_VARS_PROG help' for a list of commands.
+EOF
+  [[ $DEPLOY_VARS_HELP -gt 0 ]] && cat << EOF
+
+Commands:
+  (no command)         Auto-detect branch and run matching phases.
+                       Example:
+                         $DEPLOY_VARS_PROG
+
+  init                 Scaffold the deploy/ directory structure.
+                       Example:
+                         $DEPLOY_VARS_PROG init
+
+  phase NAME [ARGS]    Execute a specific phase by name.
+                       Branch pattern must match current branch.
+                       Examples:
+                         $DEPLOY_VARS_PROG phase lint
+                         $DEPLOY_VARS_PROG phase build --verbose
+
+  edit [PHASE]         Open config or phase script(s) in \$EDITOR.
+                       No argument opens the config file.
+                       With a phase name, opens the matching script(s).
+                       Examples:
+                         $DEPLOY_VARS_PROG edit
+                         $DEPLOY_VARS_PROG edit lint
+
+  config               Display active configuration and branch matches.
+                       Example:
+                         $DEPLOY_VARS_PROG config
+
+  gitlab               Generate .gitlab-ci.yml from config.
+                       Example:
+                         $DEPLOY_VARS_PROG gitlab
+
+  github               Generate .github/workflows/deploy.yml from config.
+                       Example:
+                         $DEPLOY_VARS_PROG github
+
+  hook                 Install a Git pre-push hook that runs deploy.
+                       Example:
+                         $DEPLOY_VARS_PROG hook
+
+  help                 Show this help message.
+                       Example:
+                         $DEPLOY_VARS_PROG help
+
+Environment Variables:
+  DEPLOY_PATH            Override default DEPLOY path (default: ./deploy)
+  DEPLOY_CONFIG          Override config file path (default: ./deploy/config)
+  DEPLOY_LOGS            Override logs directory (default: ./deploy/logs/)
+  DEPLOY_PHASES          Override phases directory (default: ./deploy/phases/)
+  DEPLOY_TIMEOUT         Per-phase timeout in seconds (default: none)
+  DEPLOY_STATUS          Show status lines: 1=on, 0=off (default: 1)
+  DEPLOY_VERBOSE         Show phase output: 1=on, 0=off (default: 1)
+
+This is "$DEPLOY_VARS_PROG" version $DEPLOY_VARS_SVER. Copyright $(date +%Y). All rights reserved.
+EOF
+  exit 1
+}
+
+# Startup Logic
+# No startup initialization required.
+
+# Dispatch Logic
+if [ $# -eq 0 ]; then
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG run"
+  deploy_cmd_run
+elif [ "$1" == "init" ]; then
+  shift
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG init"
+  deploy_cmd_init "$@"
+elif [ "$1" == "phase" ]; then
+  shift
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG phase"
+  deploy_cmd_phase "$@"
+elif [ "$1" == "edit" ]; then
+  shift
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG edit"
+  deploy_cmd_edit "$@"
+elif [ "$1" == "config" ]; then
+  shift
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG config"
+  deploy_cmd_config "$@"
+elif [ "$1" == "gitlab" ]; then
+  shift
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG gitlab"
+  deploy_cmd_gitlab "$@"
+elif [ "$1" == "github" ]; then
+  shift
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG github"
+  deploy_cmd_github "$@"
+elif [ "$1" == "hook" ]; then
+  shift
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG hook"
+  deploy_cmd_hook "$@"
+elif [ "$1" == "help" ]; then
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG help"
+  DEPLOY_VARS_HELP=1
+  deploy_cmd_get_help
+else
+  DEPLOY_VARS_CLI_CMD="$DEPLOY_VARS_PROG help"
+  DEPLOY_VARS_HELP=1
+  deploy_cmd_get_help
+fi

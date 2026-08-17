@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+set -x
+
+echo "Phase [test] START $0"
+
+if [ -n "${FACT_BINARY:-}" ]; then
+  case "$FACT_BINARY" in
+    /*) ;;
+    *) FACT_BINARY="$(pwd -P)/$FACT_BINARY" ;;
+  esac
+  export FACT_BINARY
+elif [ -f ../cli/Cargo.toml ]; then
+  cli_dir="$(cd ../cli && pwd -P)"
+  cargo build --manifest-path "$cli_dir/Cargo.toml" --bin fact --locked
+  export FACT_BINARY="$cli_dir/target/debug/fact"
+else
+  echo "No FACT_BINARY configured and no adjacent CLI checkout found at ../cli." >&2
+  echo "Build the fact CLI beside this repository or set FACT_BINARY to an absolute binary path." >&2
+  exit 1
+fi
+
+if [ ! -x "$FACT_BINARY" ]; then
+  echo "FACT_BINARY does not point to an executable fact binary: $FACT_BINARY" >&2
+  exit 1
+fi
+
+cargo check-all --locked
+
+cargo test-all --locked
+
+cargo sim suite run scenarios/smoke

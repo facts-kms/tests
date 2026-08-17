@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+set -x
+
+echo "Phase [lint] START $0"
+
+git diff --check
+
+cargo fmt-check
+
+cargo check-all --all-features --locked
+
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+cargo metadata --format-version 1 --locked >/dev/null
+
+if command -v cargo-audit >/dev/null 2>&1; then
+  cargo audit --deny warnings
+else
+  echo "cargo-audit not installed; skipping dependency audit"
+fi

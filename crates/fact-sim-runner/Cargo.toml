@@ -1,0 +1,28 @@
+[package]
+name = "fact-sim-runner"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum = "0.8"
+fact-sim-assert = { path = "../fact-sim-assert" }
+fact-sim-core = { path = "../fact-sim-core" }
+fact-sim-dsl = { path = "../fact-sim-dsl" }
+fact-http = { path = "../../../sdk/crates/fact-http" }
+fact-core.workspace = true
+fact-crypto.workspace = true
+fact-sdk.workspace = true
+fact-store.workspace = true
+libc.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+time.workspace = true
+tokio.workspace = true
+tower = { version = "0.5", features = ["util"] }
+uuid.workspace = true
+
+[dev-dependencies]
