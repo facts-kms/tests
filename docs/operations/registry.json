@@ -1,0 +1,3008 @@
+{
+  "schema_version": "facts-operations-registry-v0",
+  "spec_version": "0.1.0-draft",
+  "large_scale_policy": {
+    "default_levels": [
+      "small",
+      "medium"
+    ],
+    "large_500k": "manual-opt-in-performance-configuration"
+  },
+  "operations": [
+    {
+      "name": "CreateLedger",
+      "version": 0,
+      "purpose": "Create a ledger identity, namespace, root actor, root key, and initial administrative authority",
+      "inputs": [
+        "namespace",
+        "ledger_name",
+        "database"
+      ],
+      "optional_inputs": [
+        "seed",
+        "nonce"
+      ],
+      "inferred_context": [],
+      "preconditions": [
+        "writable_store",
+        "valid_namespace",
+        "no_existing_local_ledger_name"
+      ],
+      "authorization": [
+        "bootstrap"
+      ],
+      "reads": [],
+      "creates": [
+        "ledger",
+        "actor",
+        "key",
+        "key_binding",
+        "authorization_grant"
+      ],
+      "causal_references": [
+        "genesis"
+      ],
+      "atomicity": "all_bootstrap_objects_or_no_ledger",
+      "projection_effects": [
+        "catalog_entry",
+        "active_ledger",
+        "authority_projection"
+      ],
+      "effective_state_effects": "creates empty effective proposition set",
+      "idempotency": "same local name conflicts; same object set may be imported elsewhere",
+      "retry": "new-object-correction-after-partial-local-failure",
+      "failure_classes": [
+        "invalid_namespace",
+        "store_unwritable",
+        "catalog_conflict"
+      ],
+      "observable_result": [
+        "ledger_id",
+        "actor_id",
+        "active_ledger"
+      ],
+      "mappings": {
+        "sdk": [
+          "workflow::create_ledger"
+        ],
+        "cli": [
+          "fact init",
+          "fact new",
+          "fact ledger init"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "create_primary_replica",
+          "create_ledger"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "invalid_namespace",
+        "catalog_conflict",
+        "projection_result"
+      ],
+      "explicit_context": [],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "CreateActor",
+      "version": 0,
+      "purpose": "Create stable actor identity and initial signing key evidence",
+      "inputs": [
+        "display_name",
+        "actor_type"
+      ],
+      "optional_inputs": [
+        "alias",
+        "seed"
+      ],
+      "inferred_context": [
+        "active_ledger_for_directory_registration"
+      ],
+      "preconditions": [
+        "writable_identity_store"
+      ],
+      "authorization": [
+        "none_for_identity",
+        "admin_or_self_for_directory_registration"
+      ],
+      "reads": [
+        "directory_aliases"
+      ],
+      "creates": [
+        "actor",
+        "key",
+        "key_binding",
+        "optional_directory_entry"
+      ],
+      "causal_references": [
+        "key_binding_depends_on_actor_and_key"
+      ],
+      "atomicity": "identity_bundle_created_before_directory_registration",
+      "projection_effects": [
+        "directory_projection"
+      ],
+      "effective_state_effects": "does_not_grant_ledger_authority",
+      "idempotency": "existing alias resolves or conflicts",
+      "retry": "new-object-correction-for_bad_identity_data",
+      "failure_classes": [
+        "alias_conflict",
+        "invalid_seed",
+        "missing_directory_authority"
+      ],
+      "observable_result": [
+        "actor_id",
+        "key_id",
+        "alias",
+        "created_identity"
+      ],
+      "mappings": {
+        "sdk": [
+          "identity::create_identity",
+          "directory::add_directory_entry"
+        ],
+        "cli": [
+          "fact as",
+          "fact identity new"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "create_character"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "alias_conflict",
+        "no_automatic_authority"
+      ],
+      "explicit_context": [
+        "active_ledger_for_directory_registration"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "ImportIdentity",
+      "version": 0,
+      "purpose": "Import portable identity evidence without granting ledger authority",
+      "inputs": [
+        "identity_bundle"
+      ],
+      "optional_inputs": [],
+      "inferred_context": [
+        "active_ledger_for_optional_recognition"
+      ],
+      "preconditions": [
+        "valid_bundle"
+      ],
+      "authorization": [
+        "none_for_import",
+        "admin_for_recognition"
+      ],
+      "reads": [
+        "known_identity_objects"
+      ],
+      "creates": [
+        "actor",
+        "key",
+        "key_binding"
+      ],
+      "causal_references": [
+        "preserved_from_bundle"
+      ],
+      "atomicity": "valid_objects_imported_idempotently",
+      "projection_effects": [
+        "identity_index"
+      ],
+      "effective_state_effects": "does_not_change_propositions",
+      "idempotency": "duplicate_identity_objects_are_noops",
+      "retry": "same-object-retry-for_missing_dependencies",
+      "failure_classes": [
+        "invalid_bundle",
+        "wrong_object_kind",
+        "recognition_authorization_missing"
+      ],
+      "observable_result": [
+        "imported",
+        "duplicates",
+        "authority_unchanged"
+      ],
+      "mappings": {
+        "sdk": [
+          "identity::import_identity"
+        ],
+        "cli": [
+          "fact identity import"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": []
+      },
+      "conformance": [
+        "valid_execution",
+        "deduplication",
+        "no_permission_import"
+      ],
+      "explicit_context": [
+        "active_ledger_for_optional_recognition"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "BindKey",
+      "version": 0,
+      "purpose": "Bind a signing key to an actor for a purpose and validity range",
+      "inputs": [
+        "actor",
+        "key",
+        "purpose"
+      ],
+      "optional_inputs": [
+        "valid_from",
+        "valid_until",
+        "predecessor_binding"
+      ],
+      "inferred_context": [],
+      "preconditions": [
+        "actor_exists",
+        "key_exists",
+        "binding_authority"
+      ],
+      "authorization": [
+        "actor_control_or_admin"
+      ],
+      "reads": [
+        "actor",
+        "key",
+        "prior_bindings"
+      ],
+      "creates": [
+        "key_binding"
+      ],
+      "causal_references": [
+        "actor",
+        "key",
+        "optional_predecessor_binding"
+      ],
+      "atomicity": "single_binding_object",
+      "projection_effects": [
+        "effective_key_projection"
+      ],
+      "effective_state_effects": "future_signature_validation_uses_binding",
+      "idempotency": "same_binding_duplicate_is_noop_after_import",
+      "retry": "new-object-correction-for_invalid_binding",
+      "failure_classes": [
+        "unknown_actor",
+        "unknown_key",
+        "unauthorized_binding"
+      ],
+      "observable_result": [
+        "binding_id",
+        "actor_id",
+        "key_id"
+      ],
+      "mappings": {
+        "sdk": [
+          "identity::create_identity",
+          "identity::rotate_identity_key"
+        ],
+        "cli": [
+          "fact identity",
+          "fact as"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "key_rotation_journey"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "concurrent_bindings",
+        "historical_verification"
+      ],
+      "explicit_context": [],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "GrantCapability",
+      "version": 0,
+      "purpose": "Authorize an actor for a scoped ledger capability",
+      "inputs": [
+        "grantor",
+        "target_actor",
+        "capability",
+        "scope"
+      ],
+      "optional_inputs": [
+        "expiration",
+        "delegation_limit"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "grantor_has_authority",
+        "target_actor_known"
+      ],
+      "authorization": [
+        "admin_or_delegated_capability_grant"
+      ],
+      "reads": [
+        "authority_projection",
+        "directory_projection"
+      ],
+      "creates": [
+        "authorization_grant"
+      ],
+      "causal_references": [
+        "grantor_authority",
+        "target_actor"
+      ],
+      "atomicity": "single_grant_object",
+      "projection_effects": [
+        "authority_projection"
+      ],
+      "effective_state_effects": "future_objects_may_validate_for_capability",
+      "idempotency": "overlapping_grants_coexist",
+      "retry": "same-object-retry-for_missing_authority_evidence",
+      "failure_classes": [
+        "unknown_actor",
+        "unauthorized_grant",
+        "invalid_capability"
+      ],
+      "observable_result": [
+        "grant_id",
+        "capability",
+        "target_actor"
+      ],
+      "mappings": {
+        "sdk": [
+          "identity::create_identity_grant",
+          "delegation::create_delegation"
+        ],
+        "cli": [
+          "fact as --permission",
+          "fact permission grant"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "named_character_grant"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "unauthorized_actor",
+        "concurrent_grants"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "RevokeCapability",
+      "version": 0,
+      "purpose": "Remove future authority without invalidating historical signed objects",
+      "inputs": [
+        "grant_reference",
+        "revoker"
+      ],
+      "optional_inputs": [
+        "reason"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "grant_exists",
+        "revoker_has_authority"
+      ],
+      "authorization": [
+        "admin_or_revocation_authority"
+      ],
+      "reads": [
+        "authorization_grant",
+        "authority_projection"
+      ],
+      "creates": [
+        "authorization_revocation"
+      ],
+      "causal_references": [
+        "revoked_grant"
+      ],
+      "atomicity": "single_revocation_object",
+      "projection_effects": [
+        "authority_projection"
+      ],
+      "effective_state_effects": "future_authority_removed",
+      "idempotency": "concurrent_revocations_coexist",
+      "retry": "same-object-retry-for_missing_grant_evidence",
+      "failure_classes": [
+        "unknown_grant",
+        "unauthorized_revocation"
+      ],
+      "observable_result": [
+        "revocation_id",
+        "grant_id"
+      ],
+      "mappings": {
+        "sdk": [
+          "identity::revoke_identity_grant",
+          "delegation::revoke_delegation"
+        ],
+        "cli": [
+          "fact permission revoke",
+          "fact identity revoke"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "key_rotation_journey"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "historical_validity",
+        "concurrent_revocation"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "Propose",
+      "version": 0,
+      "purpose": "Create a proposition, initial revision, and deliberation from canonical Markdown",
+      "inputs": [
+        "markdown"
+      ],
+      "optional_inputs": [
+        "decision",
+        "relationships",
+        "purpose"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "canonical_markdown",
+        "actor_has_propose"
+      ],
+      "authorization": [
+        "propose"
+      ],
+      "reads": [
+        "authority_projection"
+      ],
+      "creates": [
+        "proposition",
+        "revision",
+        "deliberation",
+        "optional_decision",
+        "optional_settlement"
+      ],
+      "causal_references": [
+        "revision_depends_on_proposition",
+        "deliberation_depends_on_revision"
+      ],
+      "atomicity": "proposition_revision_deliberation_created_together",
+      "projection_effects": [
+        "proposition_index",
+        "pending_actions",
+        "search_index"
+      ],
+      "effective_state_effects": "pending_until_settled_unless_immediate_decision_settles",
+      "idempotency": "repeated_propose_creates_distinct_propositions",
+      "retry": "new-object-correction-for_invalid_markdown_or_authority",
+      "failure_classes": [
+        "noncanonical_markdown",
+        "unauthorized_actor",
+        "store_write_failure"
+      ],
+      "observable_result": [
+        "proposition_id",
+        "revision_id",
+        "status",
+        "pending_participant_count",
+        "next_actions"
+      ],
+      "mappings": {
+        "sdk": [
+          "proposition::create_proposition"
+        ],
+        "cli": [
+          "fact propose",
+          "fact write (missing in current CLI)"
+        ],
+        "http": [
+          "POST /facts/operations/propose (provisional)"
+        ],
+        "simulator": [
+          "propose",
+          "stable-fact"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "missing_precondition",
+        "unauthorized_actor",
+        "projection_result",
+        "observable_output"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "Revise",
+      "version": 0,
+      "purpose": "Create a candidate successor revision without replacing effective content until settlement",
+      "inputs": [
+        "proposition_or_revision_reference",
+        "markdown"
+      ],
+      "optional_inputs": [
+        "relationships"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor",
+        "sole_applicable_reference"
+      ],
+      "preconditions": [
+        "target_exists",
+        "canonical_markdown",
+        "actor_has_propose"
+      ],
+      "authorization": [
+        "propose"
+      ],
+      "reads": [
+        "proposition",
+        "parent_revision",
+        "effective_state"
+      ],
+      "creates": [
+        "revision",
+        "deliberation"
+      ],
+      "causal_references": [
+        "parent_revision",
+        "proposition"
+      ],
+      "atomicity": "revision_and_deliberation_created_together",
+      "projection_effects": [
+        "latest_revision",
+        "pending_actions",
+        "search_index"
+      ],
+      "effective_state_effects": "effective_revision_unchanged_until_valid_settlement_without_conflict",
+      "idempotency": "repeated_revise_creates_distinct_revisions",
+      "retry": "new-object-correction-for_stale_or_invalid_lineage",
+      "failure_classes": [
+        "unknown_target",
+        "noncanonical_markdown",
+        "stale_lineage",
+        "unauthorized_actor"
+      ],
+      "observable_result": [
+        "revision_id",
+        "previous_revision_id",
+        "previous_revision_effective",
+        "pending_participant_count",
+        "next_actions"
+      ],
+      "mappings": {
+        "sdk": [
+          "proposition::update_proposition_content"
+        ],
+        "cli": [
+          "fact revise",
+          "fact edit"
+        ],
+        "http": [
+          "POST /facts/operations/revise (provisional)"
+        ],
+        "simulator": [
+          "revise",
+          "collaborative-revision"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "pending_effective_distinction",
+        "concurrent_execution",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor",
+        "sole_applicable_reference"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "InviteParticipant",
+      "version": 0,
+      "purpose": "Invite an actor to a deliberation or proposition discussion",
+      "inputs": [
+        "target_deliberation_or_proposition",
+        "invitee_actor"
+      ],
+      "optional_inputs": [
+        "expiration",
+        "message"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "target_exists",
+        "invitee_known",
+        "inviter_has_invite"
+      ],
+      "authorization": [
+        "invite"
+      ],
+      "reads": [
+        "deliberation",
+        "directory_projection",
+        "authority_projection"
+      ],
+      "creates": [
+        "invitation"
+      ],
+      "causal_references": [
+        "target_deliberation",
+        "invitee_actor"
+      ],
+      "atomicity": "single_invitation_object",
+      "projection_effects": [
+        "invitation_projection",
+        "pending_invitations"
+      ],
+      "effective_state_effects": "does_not_decide_revision",
+      "idempotency": "concurrent_invitations_may_coexist",
+      "retry": "same-object-retry-for_missing_invitee_evidence",
+      "failure_classes": [
+        "unknown_invitee",
+        "unauthorized_inviter",
+        "closed_deliberation"
+      ],
+      "observable_result": [
+        "invitation_id",
+        "target",
+        "invitee",
+        "next_actions"
+      ],
+      "mappings": {
+        "sdk": [
+          "invitation::create_invitation"
+        ],
+        "cli": [
+          "fact invite",
+          "fact invitations"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "participant-lifecycle"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "unauthorized_actor",
+        "invitation_race"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "JoinDeliberation",
+      "version": 0,
+      "purpose": "Record actor consent and active participation in a deliberation",
+      "inputs": [
+        "target",
+        "actor"
+      ],
+      "optional_inputs": [
+        "invitation"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "target_exists",
+        "join_policy_or_invitation_allows_join"
+      ],
+      "authorization": [
+        "deliberate"
+      ],
+      "reads": [
+        "deliberation",
+        "invitation",
+        "participant_state"
+      ],
+      "creates": [
+        "participant_change"
+      ],
+      "causal_references": [
+        "deliberation",
+        "optional_invitation"
+      ],
+      "atomicity": "single_participant_change",
+      "projection_effects": [
+        "participant_state",
+        "pending_actions"
+      ],
+      "effective_state_effects": "may_change_consensus_participant_set",
+      "idempotency": "duplicate_active_join_is_noop_or_conflict_by_policy",
+      "retry": "new-object-correction-for_exhausted_invitation_or_race",
+      "failure_classes": [
+        "invalid_invitation",
+        "invitation_race",
+        "unauthorized_actor"
+      ],
+      "observable_result": [
+        "change_id",
+        "operation",
+        "deliberation_id",
+        "next_actions"
+      ],
+      "mappings": {
+        "sdk": [
+          "discussion::join_deliberation"
+        ],
+        "cli": [
+          "fact join"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "participant-lifecycle"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "invitation_race",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "Comment",
+      "version": 0,
+      "purpose": "Add discussion text scoped to proposition, revision, or deliberation context",
+      "inputs": [
+        "target",
+        "markdown_or_text"
+      ],
+      "optional_inputs": [
+        "scope"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "target_exists",
+        "actor_has_comment"
+      ],
+      "authorization": [
+        "comment"
+      ],
+      "reads": [
+        "target",
+        "deliberation"
+      ],
+      "creates": [
+        "deliberation_comment"
+      ],
+      "causal_references": [
+        "target_deliberation_or_revision"
+      ],
+      "atomicity": "single_comment_object",
+      "projection_effects": [
+        "comment_index",
+        "search_index_optional"
+      ],
+      "effective_state_effects": "does_not_change_fact_content",
+      "idempotency": "repeated_comment_creates_distinct_comments",
+      "retry": "new-object-correction-for_invalid_scope",
+      "failure_classes": [
+        "unknown_target",
+        "closed_comments",
+        "unauthorized_actor"
+      ],
+      "observable_result": [
+        "comment_id",
+        "target",
+        "scope"
+      ],
+      "mappings": {
+        "sdk": [
+          "discussion::create_comment"
+        ],
+        "cli": [
+          "fact comment",
+          "fact comments"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "comment"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "scope_display",
+        "post_settlement_behavior"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "CastDecision",
+      "version": 0,
+      "purpose": "Cast accept or reject decision for a deliberation candidate",
+      "inputs": [
+        "target",
+        "outcome"
+      ],
+      "optional_inputs": [
+        "supersedes_decision_ids"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor",
+        "sole_pending_action"
+      ],
+      "preconditions": [
+        "actor_is_participant",
+        "actor_has_decision_capability",
+        "target_pending"
+      ],
+      "authorization": [
+        "accept_or_reject"
+      ],
+      "reads": [
+        "deliberation",
+        "participant_state",
+        "decision_tips",
+        "authority_projection"
+      ],
+      "creates": [
+        "decision",
+        "optional_settlement"
+      ],
+      "causal_references": [
+        "deliberation",
+        "candidate_revision",
+        "optional_superseded_decisions"
+      ],
+      "atomicity": "decision_and_applicable_settlement_created_together_when_consensus_materializes",
+      "projection_effects": [
+        "pending_actions",
+        "settlement_projection",
+        "effective_state_if_settled"
+      ],
+      "effective_state_effects": "accepted_settlement_may_advance_effective_revision; rejected_settlement_keeps_prior_effective_revision",
+      "idempotency": "new_decision_supersedes_prior_tips_only_when_referenced",
+      "retry": "new-object-correction-for_decision_conflict_or_ineligible_actor",
+      "failure_classes": [
+        "no_pending_action",
+        "unauthorized_actor",
+        "decision_conflict"
+      ],
+      "observable_result": [
+        "decision_id",
+        "settlement_id",
+        "status",
+        "pending_participant_count",
+        "next_actions"
+      ],
+      "mappings": {
+        "sdk": [
+          "proposition::accept_proposition",
+          "proposition::reject_proposition",
+          "decision::create_decision"
+        ],
+        "cli": [
+          "fact accept",
+          "fact reject"
+        ],
+        "http": [
+          "POST /facts/operations/decision (provisional)"
+        ],
+        "simulator": [
+          "accept",
+          "reject",
+          "concurrent-participant-decisions"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "unauthorized_actor",
+        "concurrent_execution",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor",
+        "sole_pending_action"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "MaterializeSettlement",
+      "version": 0,
+      "purpose": "Sign evidence for already-derived consensus",
+      "inputs": [
+        "deliberation",
+        "outcome",
+        "decision_references"
+      ],
+      "optional_inputs": [],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "consensus_derivable",
+        "decision_references_exact"
+      ],
+      "authorization": [
+        "settlement_authority_defined_by_protocol"
+      ],
+      "reads": [
+        "decisions",
+        "participant_state",
+        "decision_rule"
+      ],
+      "creates": [
+        "settlement"
+      ],
+      "causal_references": [
+        "all_contributing_decisions",
+        "deliberation"
+      ],
+      "atomicity": "single_settlement_object",
+      "projection_effects": [
+        "effective_state",
+        "settlement_projection"
+      ],
+      "effective_state_effects": "materializes_derived_consensus_for_projection",
+      "idempotency": "equivalent_settlements_may_coexist",
+      "retry": "same-object-retry-for_missing_decision_evidence",
+      "failure_classes": [
+        "incomplete_decisions",
+        "incompatible_outcomes",
+        "invalid_rule"
+      ],
+      "observable_result": [
+        "settlement_id",
+        "outcome",
+        "effective_state_effect"
+      ],
+      "mappings": {
+        "sdk": [
+          "settlement internals",
+          "proposition accept/reject workflow"
+        ],
+        "cli": [
+          "fact accept",
+          "fact reject"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "settlement projection"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "equivalent_settlement",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "ArchiveProposition",
+      "version": 0,
+      "purpose": "Hide a proposition from default views while preserving history",
+      "inputs": [
+        "proposition",
+        "reason"
+      ],
+      "optional_inputs": [],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "proposition_exists",
+        "actor_has_archive"
+      ],
+      "authorization": [
+        "archive"
+      ],
+      "reads": [
+        "proposition",
+        "lifecycle_state"
+      ],
+      "creates": [
+        "lifecycle"
+      ],
+      "causal_references": [
+        "target_proposition",
+        "prior_lifecycle_tip_optional"
+      ],
+      "atomicity": "single_lifecycle_object",
+      "projection_effects": [
+        "lifecycle_state",
+        "default_visibility"
+      ],
+      "effective_state_effects": "accepted_fact_history_preserved",
+      "idempotency": "successor_lifecycle_required_for_changes",
+      "retry": "new-object-correction-for_lifecycle_conflict",
+      "failure_classes": [
+        "unknown_proposition",
+        "unauthorized_actor",
+        "lifecycle_conflict"
+      ],
+      "observable_result": [
+        "lifecycle_id",
+        "archived",
+        "history_available"
+      ],
+      "mappings": {
+        "sdk": [
+          "lifecycle::archive_proposition"
+        ],
+        "cli": [
+          "fact archive"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "archive"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "default_visibility",
+        "history_retention"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "WithdrawProposition",
+      "version": 0,
+      "purpose": "Remove a proposition from active fact queries while retaining history",
+      "inputs": [
+        "proposition",
+        "reason"
+      ],
+      "optional_inputs": [],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "proposition_exists",
+        "actor_has_withdraw"
+      ],
+      "authorization": [
+        "withdraw"
+      ],
+      "reads": [
+        "proposition",
+        "lifecycle_state"
+      ],
+      "creates": [
+        "lifecycle"
+      ],
+      "causal_references": [
+        "target_proposition",
+        "prior_lifecycle_tip_optional"
+      ],
+      "atomicity": "single_lifecycle_object",
+      "projection_effects": [
+        "lifecycle_state",
+        "default_visibility",
+        "active_fact_queries"
+      ],
+      "effective_state_effects": "withdrawn_status_until_successor_operation",
+      "idempotency": "successor_lifecycle_required_for_changes",
+      "retry": "new-object-correction-for_lifecycle_conflict",
+      "failure_classes": [
+        "unknown_proposition",
+        "unauthorized_actor",
+        "lifecycle_conflict"
+      ],
+      "observable_result": [
+        "lifecycle_id",
+        "withdrawn",
+        "history_available"
+      ],
+      "mappings": {
+        "sdk": [
+          "lifecycle::withdraw_proposition"
+        ],
+        "cli": [
+          "fact withdraw"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "withdraw"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "active_query_removal",
+        "history_retention"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "ReconcileConflict",
+      "version": 0,
+      "purpose": "Create and settle a reconciliation proposition that resolves declared conflict tips",
+      "inputs": [
+        "affected_proposition",
+        "conflicts",
+        "resolved_tips",
+        "resolution_mode"
+      ],
+      "optional_inputs": [
+        "derived_markdown"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "conflict_exists",
+        "actor_has_propose_and_deliberate",
+        "manifest_valid"
+      ],
+      "authorization": [
+        "propose",
+        "deliberate",
+        "accept_or_reject_for_settlement"
+      ],
+      "reads": [
+        "conflict_projection",
+        "candidate_revisions",
+        "supporting_settlements"
+      ],
+      "creates": [
+        "reconciliation_proposition",
+        "revision",
+        "deliberation",
+        "optional_result_revision",
+        "decisions",
+        "settlements"
+      ],
+      "causal_references": [
+        "affected_proposition",
+        "common_ancestor",
+        "conflict_tips",
+        "supporting_settlements"
+      ],
+      "atomicity": "reconciliation_proposition_creation_then_ordinary_settlement_workflow",
+      "projection_effects": [
+        "conflict_state",
+        "effective_state_after_accepted_reconciliation"
+      ],
+      "effective_state_effects": "select_or_reject_all_or_derive_result_after_settlement",
+      "idempotency": "overlapping_reconciliations_may_conflict",
+      "retry": "new-object-correction-for_changed_conflict_set",
+      "failure_classes": [
+        "no_conflict",
+        "invalid_manifest",
+        "multiple_reconciliation_outcomes"
+      ],
+      "observable_result": [
+        "reconciliation_proposition_id",
+        "resolution_mode",
+        "pending_participant_count",
+        "next_actions"
+      ],
+      "mappings": {
+        "sdk": [
+          "proposition::create_reconciliation_proposition",
+          "proposition::resolve_revision_conflict"
+        ],
+        "cli": [
+          "fact resolve",
+          "fact reconcile create"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "reconciliation-select",
+          "reconciliation-derive",
+          "reconciliation-reject-all"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "conflict_set_hash",
+        "projection_result",
+        "overlapping_reconciliations"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "ImportObjects",
+      "version": 0,
+      "purpose": "Validate and import canonical object bytes into a local store",
+      "inputs": [
+        "bundle_or_objects"
+      ],
+      "optional_inputs": [
+        "projected_mode"
+      ],
+      "inferred_context": [
+        "target_database"
+      ],
+      "preconditions": [
+        "valid_framing",
+        "schema_supported"
+      ],
+      "authorization": [
+        "evaluated_per_object"
+      ],
+      "reads": [
+        "known_objects",
+        "dependencies",
+        "authority_projection"
+      ],
+      "creates": [
+        "protocol_object_rows",
+        "dependency_rows",
+        "projection_rows"
+      ],
+      "causal_references": [
+        "preserved_from_objects"
+      ],
+      "atomicity": "implementation_defined_batch_with_no_canonical_mutation_on_reject",
+      "projection_effects": [
+        "all_dependent_projections"
+      ],
+      "effective_state_effects": "derived_after_successful_import",
+      "idempotency": "duplicate_objects_are_noops",
+      "retry": "same-object-retry-for_missing_dependency_or_temporary_policy",
+      "failure_classes": [
+        "malformed_object",
+        "missing_dependency",
+        "unauthorized_at_causal_point",
+        "duplicate"
+      ],
+      "observable_result": [
+        "imported_count",
+        "duplicate_count",
+        "deferred_or_rejected_objects"
+      ],
+      "mappings": {
+        "sdk": [
+          "sync::push_bundle_to_store",
+          "Store::insert_authorized_bundle"
+        ],
+        "cli": [
+          "fact push DATABASE FILE",
+          "fact object import",
+          "fact sync retry"
+        ],
+        "http": [
+          "POST /facts/ledgers/{ledger}/objects:push"
+        ],
+        "simulator": [
+          "import_bundle",
+          "retry_missing_dependency"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "missing_dependency",
+        "deduplication",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "target_database"
+      ],
+      "partial_success": "allowed only with explicit per-object disposition and retryable dependency closure",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions",
+        "record_transport_disposition"
+      ]
+    },
+    {
+      "name": "Push",
+      "version": 0,
+      "purpose": "Send local object bundle data to a store or remote coordinator",
+      "inputs": [
+        "source_database_or_ledger",
+        "destination"
+      ],
+      "optional_inputs": [
+        "remote",
+        "ledger",
+        "object_scope"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "sole_configured_remote"
+      ],
+      "preconditions": [
+        "source_exists",
+        "destination_reachable_or_local"
+      ],
+      "authorization": [
+        "coordinator_policy_for_remote",
+        "local_read_for_file"
+      ],
+      "reads": [
+        "source_objects",
+        "known_hashes_optional"
+      ],
+      "creates": [
+        "bundle",
+        "coordinator_disposition_optional"
+      ],
+      "causal_references": [
+        "bundle_preserves_object_dependencies"
+      ],
+      "atomicity": "transport_batch_disposition",
+      "projection_effects": [
+        "remote_or_destination_projection_after_import"
+      ],
+      "effective_state_effects": "none_locally_except_sync_metadata",
+      "idempotency": "duplicate_delivery_is_noop",
+      "retry": "same-object-retry-for_remote_unavailable_or_partial_success",
+      "failure_classes": [
+        "remote_unavailable",
+        "read_only_source",
+        "partial_success"
+      ],
+      "observable_result": [
+        "objects_sent_or_imported",
+        "bundle_bytes",
+        "complete_or_partial"
+      ],
+      "mappings": {
+        "sdk": [
+          "sync::write_pull_bundle_from_store_with_options",
+          "sync::push_bundle_to_store"
+        ],
+        "cli": [
+          "fact push",
+          "fact sync push"
+        ],
+        "http": [
+          "POST /facts/ledgers/{ledger}/objects:push"
+        ],
+        "simulator": [
+          "synchronization"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "duplicate_delivery",
+        "partial_success",
+        "retry"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "sole_configured_remote"
+      ],
+      "partial_success": "allowed only with explicit per-object disposition and retryable dependency closure",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions",
+        "record_transport_disposition"
+      ]
+    },
+    {
+      "name": "Pull",
+      "version": 0,
+      "purpose": "Request objects from a store or remote coordinator",
+      "inputs": [
+        "source",
+        "ledger"
+      ],
+      "optional_inputs": [
+        "known_hashes",
+        "after",
+        "limit",
+        "max_object_bytes"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "sole_configured_remote"
+      ],
+      "preconditions": [
+        "source_reachable",
+        "ledger_known"
+      ],
+      "authorization": [
+        "coordinator_policy_for_remote"
+      ],
+      "reads": [
+        "remote_objects",
+        "known_hashes"
+      ],
+      "creates": [
+        "bundle",
+        "local_import_optional"
+      ],
+      "causal_references": [
+        "bundle_preserves_object_dependencies"
+      ],
+      "atomicity": "page_or_bundle",
+      "projection_effects": [
+        "local_projection_after_import"
+      ],
+      "effective_state_effects": "derived_after_import",
+      "idempotency": "repeated_pull_with_same_known_hashes_may_return_same_bundle",
+      "retry": "same-object-retry-for_remote_unavailable_or_pagination_resume",
+      "failure_classes": [
+        "remote_unavailable",
+        "interrupted_pull",
+        "dependency_gap"
+      ],
+      "observable_result": [
+        "objects",
+        "bundle_bytes",
+        "complete",
+        "next_cursor"
+      ],
+      "mappings": {
+        "sdk": [
+          "sync::write_pull_bundle_from_store_with_options"
+        ],
+        "cli": [
+          "fact pull",
+          "fact sync pull"
+        ],
+        "http": [
+          "POST /facts/ledgers/{ledger}/objects:pull"
+        ],
+        "simulator": [
+          "synchronization",
+          "missing-dependency-retry"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "pagination",
+        "resume",
+        "dependency_closure"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "sole_configured_remote"
+      ],
+      "partial_success": "allowed only with explicit per-object disposition and retryable dependency closure",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions",
+        "record_transport_disposition"
+      ]
+    },
+    {
+      "name": "RebuildProjections",
+      "version": 0,
+      "purpose": "Rebuild disposable derived views from canonical objects",
+      "inputs": [
+        "store"
+      ],
+      "optional_inputs": [
+        "projection_kind"
+      ],
+      "inferred_context": [
+        "active_ledger_optional"
+      ],
+      "preconditions": [
+        "store_readable",
+        "canonical_objects_intact"
+      ],
+      "authorization": [
+        "local_maintenance"
+      ],
+      "reads": [
+        "protocol_object",
+        "object_dependency",
+        "protocol_specific_tables"
+      ],
+      "creates": [
+        "projection_rows",
+        "search_index_rows"
+      ],
+      "causal_references": [
+        "read_only"
+      ],
+      "atomicity": "projection_rebuild_transaction_per_store_or_projection",
+      "projection_effects": [
+        "all_selected_projections"
+      ],
+      "effective_state_effects": "logically_equivalent_to_prior_intact_projection",
+      "idempotency": "same_object_set_rebuild_is_equivalent",
+      "retry": "same-operation-retry-after_local_storage_issue",
+      "failure_classes": [
+        "canonical_corruption",
+        "sqlite_write_failure",
+        "unsupported_schema"
+      ],
+      "observable_result": [
+        "rebuilt_projection_count",
+        "equivalence_digest_optional"
+      ],
+      "mappings": {
+        "sdk": [
+          "state::rebuild_state"
+        ],
+        "cli": [
+          "fact state rebuild"
+        ],
+        "http": [
+          "local-only"
+        ],
+        "simulator": [
+          "projection-corruption-rebuild",
+          "faults-projection-repair"
+        ]
+      },
+      "conformance": [
+        "projection_result",
+        "rebuild_equivalence",
+        "canonical_hash_unchanged"
+      ],
+      "explicit_context": [
+        "active_ledger_optional"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions",
+        "compare_rebuilt_projection_equivalence"
+      ]
+    },
+    {
+      "name": "RotateKey",
+      "version": 0,
+      "purpose": "Create a successor signing key binding and revoke future use of the previous key",
+      "inputs": [
+        "actor",
+        "new_key"
+      ],
+      "optional_inputs": [
+        "old_key",
+        "reason"
+      ],
+      "inferred_context": [
+        "active_actor"
+      ],
+      "preconditions": [
+        "actor_controls_current_key"
+      ],
+      "authorization": [
+        "actor_control_or_admin"
+      ],
+      "reads": [
+        "actor",
+        "current_key_binding"
+      ],
+      "creates": [
+        "key",
+        "key_binding",
+        "key_revocation"
+      ],
+      "causal_references": [
+        "previous_key_binding"
+      ],
+      "atomicity": "new_binding_and_old_key_revocation_together",
+      "projection_effects": [
+        "effective_key_projection"
+      ],
+      "effective_state_effects": "future_signatures_use_new_key; historical_signatures_remain_valid",
+      "idempotency": "repeated_rotation_creates_new_successor_lineage",
+      "retry": "new-object-correction-for_partial_rotation",
+      "failure_classes": [
+        "unknown_actor",
+        "missing_current_key",
+        "unauthorized_rotation"
+      ],
+      "observable_result": [
+        "new_key_id",
+        "revoked_key_id",
+        "actor_id"
+      ],
+      "mappings": {
+        "sdk": [
+          "identity::rotate_identity_key"
+        ],
+        "cli": [
+          "fact identity rotate"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "key_rotation_journey"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "historical_verification",
+        "partial_failure"
+      ],
+      "explicit_context": [
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "RecoverActorKey",
+      "version": 0,
+      "purpose": "Document unresolved actor key recovery behavior for version 0",
+      "inputs": [
+        "actor"
+      ],
+      "optional_inputs": [
+        "recovery_evidence"
+      ],
+      "inferred_context": [],
+      "preconditions": [
+        "unresolved_v0"
+      ],
+      "authorization": [
+        "unresolved_v0"
+      ],
+      "reads": [
+        "actor",
+        "key_bindings"
+      ],
+      "creates": [],
+      "causal_references": [
+        "unresolved_v0"
+      ],
+      "atomicity": "not_standardized",
+      "projection_effects": [
+        "none"
+      ],
+      "effective_state_effects": "none_in_v0",
+      "idempotency": "not_standardized",
+      "retry": "open-issue-OPS-001",
+      "failure_classes": [
+        "unsupported_operation"
+      ],
+      "observable_result": [
+        "open_issue_reference"
+      ],
+      "mappings": {
+        "sdk": [],
+        "cli": [],
+        "http": [],
+        "simulator": []
+      },
+      "conformance": [
+        "open_issue"
+      ],
+      "explicit_context": [],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "RetireActor",
+      "version": 0,
+      "purpose": "Document unresolved actor retirement behavior without erasing historical attribution",
+      "inputs": [
+        "actor"
+      ],
+      "optional_inputs": [
+        "reason"
+      ],
+      "inferred_context": [],
+      "preconditions": [
+        "unresolved_v0"
+      ],
+      "authorization": [
+        "unresolved_v0"
+      ],
+      "reads": [
+        "actor",
+        "authority_projection"
+      ],
+      "creates": [],
+      "causal_references": [
+        "unresolved_v0"
+      ],
+      "atomicity": "not_standardized",
+      "projection_effects": [
+        "none"
+      ],
+      "effective_state_effects": "historical_signatures_must_remain_verifiable",
+      "idempotency": "not_standardized",
+      "retry": "open-issue-OPS-002",
+      "failure_classes": [
+        "unsupported_operation"
+      ],
+      "observable_result": [
+        "open_issue_reference"
+      ],
+      "mappings": {
+        "sdk": [],
+        "cli": [],
+        "http": [],
+        "simulator": []
+      },
+      "conformance": [
+        "open_issue"
+      ],
+      "explicit_context": [],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "InitializeReplica",
+      "version": 0,
+      "purpose": "Create a local replica from an object set or database snapshot while preserving ledger identity",
+      "inputs": [
+        "source",
+        "ledger"
+      ],
+      "optional_inputs": [
+        "remote",
+        "name",
+        "read_only"
+      ],
+      "inferred_context": [
+        "source_ledger_when_unambiguous"
+      ],
+      "preconditions": [
+        "source_readable",
+        "ledger_identity_known"
+      ],
+      "authorization": [
+        "local_catalog_write",
+        "remote_policy_optional"
+      ],
+      "reads": [
+        "source_objects",
+        "catalog"
+      ],
+      "creates": [
+        "local_database",
+        "catalog_entry",
+        "projection_rows"
+      ],
+      "causal_references": [
+        "preserved_object_dependencies"
+      ],
+      "atomicity": "local_replica_registered_after_import",
+      "projection_effects": [
+        "all_projection_rows_for_imported_objects"
+      ],
+      "effective_state_effects": "derived_from_imported_object_set",
+      "idempotency": "same_name_conflicts; same_object_set_can_be_registered_read_only",
+      "retry": "same-operation-retry-for_incomplete_source",
+      "failure_classes": [
+        "source_unavailable",
+        "incomplete_bundle",
+        "catalog_conflict"
+      ],
+      "observable_result": [
+        "ledger_id",
+        "database",
+        "read_only",
+        "complete_claim"
+      ],
+      "mappings": {
+        "sdk": [
+          "environment::clone_read_only_ledger_from_objects"
+        ],
+        "cli": [
+          "fact clone",
+          "fact from"
+        ],
+        "http": [
+          "objects:pull"
+        ],
+        "simulator": [
+          "Initialize replica"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "completeness_claim",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "source_ledger_when_unambiguous"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "DeleteLocalLedger",
+      "version": 0,
+      "purpose": "Remove local catalog and database state without creating protocol mutation",
+      "inputs": [
+        "local_ledger_name"
+      ],
+      "optional_inputs": [
+        "force"
+      ],
+      "inferred_context": [
+        "active_ledger_optional"
+      ],
+      "preconditions": [
+        "local_ledger_exists",
+        "operator_confirmation_policy"
+      ],
+      "authorization": [
+        "local_filesystem_authority"
+      ],
+      "reads": [
+        "catalog",
+        "local_database"
+      ],
+      "creates": [],
+      "causal_references": [
+        "none"
+      ],
+      "atomicity": "local_implementation_defined",
+      "projection_effects": [
+        "local_rows_removed_with_database"
+      ],
+      "effective_state_effects": "none_for_other_replicas",
+      "idempotency": "missing_local_ledger_is_error",
+      "retry": "same-operation-retry-for_local_filesystem_failure",
+      "failure_classes": [
+        "unknown_local_ledger",
+        "active_ledger_safeguard",
+        "filesystem_error"
+      ],
+      "observable_result": [
+        "deleted_local_name"
+      ],
+      "mappings": {
+        "sdk": [
+          "environment local catalog"
+        ],
+        "cli": [
+          "fact ledger delete"
+        ],
+        "http": [
+          "local-only"
+        ],
+        "simulator": []
+      },
+      "conformance": [
+        "local_only",
+        "no_protocol_mutation"
+      ],
+      "explicit_context": [
+        "active_ledger_optional"
+      ],
+      "partial_success": "local cleanup may leave recoverable files; no protocol object is partially applied",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "DelegateAuthority",
+      "version": 0,
+      "purpose": "Delegate scoped authority with explicit expiration and redelegation limits",
+      "inputs": [
+        "grantor",
+        "delegate",
+        "capability",
+        "scope"
+      ],
+      "optional_inputs": [
+        "expiration",
+        "redelegation_allowed"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "grantor_has_delegable_authority"
+      ],
+      "authorization": [
+        "admin_or_delegable_capability"
+      ],
+      "reads": [
+        "authority_projection"
+      ],
+      "creates": [
+        "delegation_grant"
+      ],
+      "causal_references": [
+        "grantor_authority",
+        "delegate_actor"
+      ],
+      "atomicity": "single_delegation_object",
+      "projection_effects": [
+        "authority_projection"
+      ],
+      "effective_state_effects": "future_authority_may_include_delegate",
+      "idempotency": "overlapping_delegations_coexist",
+      "retry": "same-object-retry-for_missing_authority_evidence",
+      "failure_classes": [
+        "unauthorized_delegation",
+        "invalid_scope",
+        "expired_authority"
+      ],
+      "observable_result": [
+        "delegation_id",
+        "capability",
+        "scope"
+      ],
+      "mappings": {
+        "sdk": [
+          "delegation::create_delegation"
+        ],
+        "cli": [
+          "fact permission grant"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "named-character-grant"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "non_transitive_by_default",
+        "revocation"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "CopyProposition",
+      "version": 0,
+      "purpose": "Create a new proposition identity from existing content while preserving provenance",
+      "inputs": [
+        "source_proposition"
+      ],
+      "optional_inputs": [
+        "markdown_override",
+        "provenance"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "source_exists",
+        "actor_has_propose"
+      ],
+      "authorization": [
+        "propose"
+      ],
+      "reads": [
+        "source_proposition",
+        "effective_revision"
+      ],
+      "creates": [
+        "proposition",
+        "revision",
+        "deliberation",
+        "provenance_relationship"
+      ],
+      "causal_references": [
+        "source_revision_as_provenance"
+      ],
+      "atomicity": "new_proposition_revision_deliberation_together",
+      "projection_effects": [
+        "proposition_index",
+        "search_index"
+      ],
+      "effective_state_effects": "new_identity_pending_until_settled",
+      "idempotency": "repeated_copy_creates_distinct_propositions",
+      "retry": "new-object-correction-for_invalid_source_or_markdown",
+      "failure_classes": [
+        "unknown_source",
+        "unauthorized_actor",
+        "noncanonical_markdown"
+      ],
+      "observable_result": [
+        "new_proposition_id",
+        "source_reference"
+      ],
+      "mappings": {
+        "sdk": [
+          "provenance support",
+          "proposition::create_proposition"
+        ],
+        "cli": [
+          "provisional"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": []
+      },
+      "conformance": [
+        "open_issue-OPS-005",
+        "provenance_preserved"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "OpenDeliberation",
+      "version": 0,
+      "purpose": "Open deliberation for a revision with decision rule, join policy, and participant set",
+      "inputs": [
+        "revision",
+        "decision_rule",
+        "join_policy"
+      ],
+      "optional_inputs": [
+        "parent_deliberation",
+        "initial_participants"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "revision_exists",
+        "actor_has_deliberate"
+      ],
+      "authorization": [
+        "deliberate"
+      ],
+      "reads": [
+        "revision",
+        "parent_deliberation_optional",
+        "authority_projection"
+      ],
+      "creates": [
+        "deliberation"
+      ],
+      "causal_references": [
+        "revision",
+        "optional_parent_deliberation"
+      ],
+      "atomicity": "single_deliberation_object",
+      "projection_effects": [
+        "deliberation_projection",
+        "pending_actions"
+      ],
+      "effective_state_effects": "does_not_settle_by_itself",
+      "idempotency": "parallel_deliberations_may_coexist",
+      "retry": "new-object-correction-for_invalid_rule_or_parent",
+      "failure_classes": [
+        "unknown_revision",
+        "unauthorized_actor",
+        "invalid_decision_rule"
+      ],
+      "observable_result": [
+        "deliberation_id",
+        "participants",
+        "decision_rule"
+      ],
+      "mappings": {
+        "sdk": [
+          "discussion/open deliberation helpers"
+        ],
+        "cli": [
+          "fact deliberation open"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "open-deliberation"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "parallel_deliberations",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "ExtendDeliberation",
+      "version": 0,
+      "purpose": "Open a child deliberation inheriting only from its immediate parent",
+      "inputs": [
+        "parent_deliberation",
+        "revision"
+      ],
+      "optional_inputs": [
+        "decision_rule_override",
+        "join_policy_override"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "parent_deliberation_exists",
+        "revision_exists"
+      ],
+      "authorization": [
+        "deliberate"
+      ],
+      "reads": [
+        "parent_deliberation",
+        "revision"
+      ],
+      "creates": [
+        "deliberation"
+      ],
+      "causal_references": [
+        "parent_deliberation",
+        "revision"
+      ],
+      "atomicity": "single_child_deliberation_object",
+      "projection_effects": [
+        "deliberation_projection"
+      ],
+      "effective_state_effects": "does_not_settle_by_itself",
+      "idempotency": "parallel_extensions_may_coexist",
+      "retry": "new-object-correction-for_invalid_parent",
+      "failure_classes": [
+        "unknown_parent",
+        "invalid_inheritance",
+        "unauthorized_actor"
+      ],
+      "observable_result": [
+        "deliberation_id",
+        "extends_deliberation_id"
+      ],
+      "mappings": {
+        "sdk": [
+          "proposition::update_proposition_content"
+        ],
+        "cli": [
+          "fact revise"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "collaborative-revision"
+        ]
+      },
+      "conformance": [
+        "immediate_parent_only",
+        "parallel_execution"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "LeaveDeliberation",
+      "version": 0,
+      "purpose": "Record self-authored departure from active deliberation participation",
+      "inputs": [
+        "deliberation_or_proposition",
+        "actor"
+      ],
+      "optional_inputs": [
+        "reason"
+      ],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "actor_is_active_participant"
+      ],
+      "authorization": [
+        "self_participant"
+      ],
+      "reads": [
+        "participant_state",
+        "deliberation"
+      ],
+      "creates": [
+        "participant_change"
+      ],
+      "causal_references": [
+        "deliberation",
+        "actor"
+      ],
+      "atomicity": "single_participant_change",
+      "projection_effects": [
+        "participant_state",
+        "pending_actions"
+      ],
+      "effective_state_effects": "may_change_consensus_participant_set_for_future_derivation",
+      "idempotency": "repeated_leave_after_inactive_is_error_or_noop_by_policy",
+      "retry": "new-object-correction-for_not_active_or_after_decision_policy",
+      "failure_classes": [
+        "not_participant",
+        "closed_deliberation",
+        "unauthorized_actor"
+      ],
+      "observable_result": [
+        "change_id",
+        "operation"
+      ],
+      "mappings": {
+        "sdk": [
+          "discussion::leave_deliberation"
+        ],
+        "cli": [
+          "fact leave"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "participant-lifecycle"
+        ]
+      },
+      "conformance": [
+        "valid_execution",
+        "prior_decisions_preserved"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "AddParticipant",
+      "version": 0,
+      "purpose": "Administratively add a participant separately from self-join",
+      "inputs": [
+        "deliberation",
+        "actor"
+      ],
+      "optional_inputs": [
+        "reason"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "deliberation_exists",
+        "admin_has_participant_authority"
+      ],
+      "authorization": [
+        "admin_or_roster_governance"
+      ],
+      "reads": [
+        "deliberation",
+        "participant_state",
+        "authority_projection"
+      ],
+      "creates": [
+        "participant_change"
+      ],
+      "causal_references": [
+        "deliberation",
+        "actor"
+      ],
+      "atomicity": "single_participant_change",
+      "projection_effects": [
+        "participant_state"
+      ],
+      "effective_state_effects": "may_change_consensus_participant_set",
+      "idempotency": "duplicate_add_policy_defined_by_roster_governance",
+      "retry": "new-object-correction-for_roster_conflict",
+      "failure_classes": [
+        "unauthorized_actor",
+        "unknown_actor",
+        "roster_conflict"
+      ],
+      "observable_result": [
+        "change_id",
+        "operation"
+      ],
+      "mappings": {
+        "sdk": [
+          "discussion participant change internals"
+        ],
+        "cli": [
+          "provisional"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "participant lifecycle internals"
+        ]
+      },
+      "conformance": [
+        "administrative_distinct_from_join",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "RemoveParticipant",
+      "version": 0,
+      "purpose": "Administratively remove a participant separately from self-leave",
+      "inputs": [
+        "deliberation",
+        "actor"
+      ],
+      "optional_inputs": [
+        "reason"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "deliberation_exists",
+        "admin_has_participant_authority"
+      ],
+      "authorization": [
+        "admin_or_roster_governance"
+      ],
+      "reads": [
+        "deliberation",
+        "participant_state",
+        "authority_projection"
+      ],
+      "creates": [
+        "participant_change"
+      ],
+      "causal_references": [
+        "deliberation",
+        "actor"
+      ],
+      "atomicity": "single_participant_change",
+      "projection_effects": [
+        "participant_state"
+      ],
+      "effective_state_effects": "may_change_consensus_participant_set",
+      "idempotency": "duplicate_remove_policy_defined_by_roster_governance",
+      "retry": "new-object-correction-for_roster_conflict",
+      "failure_classes": [
+        "unauthorized_actor",
+        "unknown_actor",
+        "roster_conflict"
+      ],
+      "observable_result": [
+        "change_id",
+        "operation"
+      ],
+      "mappings": {
+        "sdk": [
+          "discussion participant change internals"
+        ],
+        "cli": [
+          "provisional"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "participant lifecycle internals"
+        ]
+      },
+      "conformance": [
+        "administrative_distinct_from_leave",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "ResolveDecisionConflict",
+      "version": 0,
+      "purpose": "Supersede all current conflicting decision tips by the same participant",
+      "inputs": [
+        "deliberation",
+        "participant",
+        "outcome",
+        "superseded_decisions"
+      ],
+      "optional_inputs": [],
+      "inferred_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "preconditions": [
+        "decision_conflict_exists",
+        "participant_matches_signer"
+      ],
+      "authorization": [
+        "accept_or_reject"
+      ],
+      "reads": [
+        "decision_tips",
+        "participant_state"
+      ],
+      "creates": [
+        "decision",
+        "optional_settlement"
+      ],
+      "causal_references": [
+        "all_superseded_decision_tips",
+        "deliberation"
+      ],
+      "atomicity": "successor_decision_then_applicable_settlement",
+      "projection_effects": [
+        "decision_tip_projection",
+        "pending_actions",
+        "settlement_projection"
+      ],
+      "effective_state_effects": "conflicting_tips_do_not_contribute_until_resolved",
+      "idempotency": "new_successor_required_if_tip_set_changes",
+      "retry": "new-object-correction-for_incomplete_supersession",
+      "failure_classes": [
+        "missing_tip",
+        "wrong_participant",
+        "changed_tip_set"
+      ],
+      "observable_result": [
+        "decision_id",
+        "superseded_decision_ids"
+      ],
+      "mappings": {
+        "sdk": [
+          "decision::create_decision"
+        ],
+        "cli": [
+          "fact accept",
+          "fact reject"
+        ],
+        "http": [
+          "provisional"
+        ],
+        "simulator": [
+          "concurrent-participant-decisions"
+        ]
+      },
+      "conformance": [
+        "decision_conflict",
+        "all_tips_superseded"
+      ],
+      "explicit_context": [
+        "active_ledger",
+        "active_actor"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "SynchronizeReplicas",
+      "version": 0,
+      "purpose": "Converge replicas by exchanging immutable objects and rebuilding equivalent derived state",
+      "inputs": [
+        "source_replica",
+        "target_replica",
+        "ledger"
+      ],
+      "optional_inputs": [
+        "known_hashes",
+        "limits",
+        "remote"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "replicas_reachable",
+        "ledger_identity_matches"
+      ],
+      "authorization": [
+        "coordinator_policy",
+        "ledger_authorization_per_object"
+      ],
+      "reads": [
+        "source_object_set",
+        "target_known_hashes"
+      ],
+      "creates": [
+        "bundles",
+        "imported_objects",
+        "projection_rows",
+        "dispositions_optional"
+      ],
+      "causal_references": [
+        "preserved_object_dependencies"
+      ],
+      "atomicity": "page_or_bundle_level_with_retryable_partial_success",
+      "projection_effects": [
+        "all_dependent_projections"
+      ],
+      "effective_state_effects": "equivalent_after_same_canonical_object_set",
+      "idempotency": "duplicate_object_delivery_is_noop",
+      "retry": "same-object-retry-for_partial_sync_or_missing_dependency",
+      "failure_classes": [
+        "remote_unavailable",
+        "missing_dependency",
+        "partial_success"
+      ],
+      "observable_result": [
+        "object_counts",
+        "complete",
+        "next_cursor",
+        "dispositions"
+      ],
+      "mappings": {
+        "sdk": [
+          "sync module"
+        ],
+        "cli": [
+          "fact push",
+          "fact pull"
+        ],
+        "http": [
+          "objects:push",
+          "objects:pull"
+        ],
+        "simulator": [
+          "multi-environment-sync",
+          "scale_synchronization_journey"
+        ]
+      },
+      "conformance": [
+        "convergence",
+        "duplicate_delivery",
+        "projection_result"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "allowed only with explicit per-object disposition and retryable dependency closure",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions",
+        "record_transport_disposition"
+      ]
+    },
+    {
+      "name": "QueryEffectiveState",
+      "version": 0,
+      "purpose": "Read current effective proposition state and related history",
+      "inputs": [
+        "query_or_reference"
+      ],
+      "optional_inputs": [
+        "status_filter",
+        "include_history",
+        "include_conflicts",
+        "pagination"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "store_readable"
+      ],
+      "authorization": [
+        "read_policy"
+      ],
+      "reads": [
+        "projections",
+        "canonical_objects_for_details"
+      ],
+      "creates": [],
+      "causal_references": [
+        "none"
+      ],
+      "atomicity": "read_snapshot",
+      "projection_effects": [
+        "none"
+      ],
+      "effective_state_effects": "none",
+      "idempotency": "read_only",
+      "retry": "same-operation-retry",
+      "failure_classes": [
+        "unknown_reference",
+        "ambiguous_reference",
+        "projection_unavailable"
+      ],
+      "observable_result": [
+        "effective_revision",
+        "status",
+        "latest_revision",
+        "pending_actions",
+        "conflicts"
+      ],
+      "mappings": {
+        "sdk": [
+          "proposition::list_propositions",
+          "proposition::show_proposition_overview",
+          "proposition::read_proposition_content"
+        ],
+        "cli": [
+          "fact list",
+          "fact show",
+          "fact open",
+          "fact echo",
+          "fact revisions",
+          "fact history",
+          "fact read (missing in current CLI)"
+        ],
+        "http": [
+          "GET /facts/ledgers/{ledger}/propositions (provisional)"
+        ],
+        "simulator": [
+          "inspect",
+          "verify",
+          "ux"
+        ]
+      },
+      "conformance": [
+        "effective_state_default",
+        "pending_latest_distinction",
+        "ambiguous_reference"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions"
+      ]
+    },
+    {
+      "name": "SearchEffectiveFacts",
+      "version": 0,
+      "purpose": "Search effective proposition content with provenance and completeness metadata",
+      "inputs": [
+        "query"
+      ],
+      "optional_inputs": [
+        "filters",
+        "pagination",
+        "provider"
+      ],
+      "inferred_context": [
+        "active_ledger"
+      ],
+      "preconditions": [
+        "search_index_available_or_rebuildable"
+      ],
+      "authorization": [
+        "read_policy"
+      ],
+      "reads": [
+        "search_index",
+        "effective_state_projection"
+      ],
+      "creates": [],
+      "causal_references": [
+        "none"
+      ],
+      "atomicity": "read_snapshot",
+      "projection_effects": [
+        "none"
+      ],
+      "effective_state_effects": "none",
+      "idempotency": "read_only_subject_to_provider_scoring",
+      "retry": "same-operation-retry",
+      "failure_classes": [
+        "index_unavailable",
+        "provider_unavailable",
+        "unsupported_filter"
+      ],
+      "observable_result": [
+        "matches",
+        "provenance",
+        "completeness_class"
+      ],
+      "mappings": {
+        "sdk": [
+          "search::search_proposition_content"
+        ],
+        "cli": [
+          "fact search",
+          "fact find"
+        ],
+        "http": [
+          "GET /facts/search (provisional)"
+        ],
+        "simulator": [
+          "search-corpus-report"
+        ]
+      },
+      "conformance": [
+        "effective_content_only",
+        "pagination",
+        "provider_absence_warning"
+      ],
+      "explicit_context": [
+        "active_ledger"
+      ],
+      "partial_success": "none; operation fails before creating observable successor objects outside its atomicity boundary",
+      "validation_steps": [
+        "validate_schema",
+        "verify_signatures",
+        "check_causal_dependencies",
+        "check_authorization_at_causal_point",
+        "check_operation_preconditions",
+        "classify_completeness"
+      ]
+    }
+  ]
+}

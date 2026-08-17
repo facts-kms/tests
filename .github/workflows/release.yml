@@ -41,15 +41,22 @@ jobs:
       - name: Release validation
         working-directory: fact-tests
         run: |
+          mkdir -p reports/ci
           large_args=()
           if [ "$INCLUDE_LARGE" = "true" ]; then
             large_args+=(--include-large)
           fi
-          cargo sim ci release --report-dir reports/ci "${large_args[@]}"
+          cargo run -p fact-sim-cli -- ci release --report-dir reports/ci "${large_args[@]}"
       - name: Render CI summary
         if: always()
         working-directory: fact-tests
-        run: cargo sim ci summary reports/ci/release-summary.json > reports/ci/release-summary.md
+        run: |
+          mkdir -p reports/ci
+          if [ -f reports/ci/release-summary.json ]; then
+            cargo run -p fact-sim-cli -- ci summary reports/ci/release-summary.json > reports/ci/release-summary.md
+          else
+            printf 'Release validation summary was not generated.\n' > reports/ci/release-summary.md
+          fi
       - name: Upload release validation reports
         if: always()
         uses: actions/upload-artifact@v4

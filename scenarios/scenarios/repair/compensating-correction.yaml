@@ -1,0 +1,58 @@
+version: 1
+name: compensating-correction
+seed: 4701
+clock:
+  start: 2026-01-06T11:00:00Z
+characters:
+  - name: alice
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, deliberate]
+  - propose:
+      actor: alice
+      ledger: operations
+      as: correction_policy
+      markdown: |
+        # Correction policy
+
+        Undesired settled outcome.
+  - accept:
+      actor: alice
+      proposition: correction_policy
+  - assert:
+      - status:
+          proposition: correction_policy
+          equals: accepted
+      - effective_revision:
+          proposition: correction_policy
+          equals: correction_policy
+  - semantic_correction:
+      actor: alice
+      proposition: correction_policy
+      previous_revision: correction_policy
+      as: correction_policy_fixed
+      markdown: |
+        # Correction policy
+
+        Compensating correction while preserving the original outcome.
+  - assert:
+      - semantic_correction:
+          correction: correction_policy_fixed
+          previous_revision: correction_policy
+          corrective_revision: correction_policy_fixed
+          effective_revision: correction_policy_fixed
+          preserved_history: true
+          requires_new_signed_object: true
+      - status:
+          proposition: correction_policy
+          equals: accepted
+      - effective_revision:
+          proposition: correction_policy
+          equals: correction_policy_fixed
+      - revision_status:
+          revision: correction_policy
+          equals: superseded

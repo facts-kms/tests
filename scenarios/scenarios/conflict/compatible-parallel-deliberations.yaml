@@ -1,0 +1,91 @@
+version: 1
+name: compatible-parallel-deliberations
+seed: 4302
+clock:
+  start: 2026-01-08T10:00:00Z
+characters:
+  - name: alice
+    environments: [replica_a, replica_b]
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, reject, deliberate]
+  - propose:
+      actor: alice
+      replica: replica_a
+      ledger: operations
+      as: compatible_policy
+      markdown: |
+        # Compatible policy
+
+        Compatible deliberations should not create a false conflict.
+  - assert:
+      - status:
+          proposition: compatible_policy
+          equals: pending
+      - deliberation_conflict:
+          proposition: compatible_policy
+          revision: compatible_policy
+          equals: false
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - parallel:
+      branches:
+        - replica: replica_a
+          steps:
+            - decide:
+                actor: alice
+                proposition: compatible_policy
+                deliberation: compatible_policy
+                value: accepted
+                as: first_accept_vote
+            - settle:
+                actor: alice
+                proposition: compatible_policy
+                revision: compatible_policy
+                deliberation: compatible_policy
+                as: first_accept_settlement
+        - replica: replica_b
+          steps:
+            - open_deliberation:
+                actor: alice
+                proposition: compatible_policy
+                revision: compatible_policy
+                as: second_accept_deliberation
+            - decide:
+                actor: alice
+                proposition: compatible_policy
+                deliberation: second_accept_deliberation
+                value: accepted
+                as: second_accept_vote
+            - settle:
+                actor: alice
+                proposition: compatible_policy
+                revision: compatible_policy
+                deliberation: second_accept_deliberation
+                as: second_accept_settlement
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - sync:
+      from: replica_b
+      to: replica_a
+      ledger: operations
+  - assert:
+      - status:
+          proposition: compatible_policy
+          equals: accepted
+      - effective_revision:
+          proposition: compatible_policy
+          equals: compatible_policy
+      - deliberation_conflict:
+          proposition: compatible_policy
+          revision: compatible_policy
+          equals: false
+          deliberations: [compatible_policy, second_accept_deliberation]

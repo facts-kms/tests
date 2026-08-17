@@ -1,0 +1,94 @@
+{
+  "schema_version": "facts-operations-open-issues-v0",
+  "spec_version": "0.1.0-draft",
+  "issues": [
+    {
+      "id": "OPS-001",
+      "question": "What is the version 0 actor key recovery operation?",
+      "affected_operations": ["RecoverActorKey", "RotateKey", "BindKey"],
+      "current_behavior": "Key rotation exists; recovery semantics are not first-class.",
+      "candidate_resolutions": ["No recovery in v0", "Admin-signed recovery", "Actor predeclared recovery keys"],
+      "architectural_implications": "Recovery must preserve historical attribution and not retroactively validate forged signatures.",
+      "test_coverage": ["synchronization fixture key rotation journey"],
+      "status": "open",
+      "decision_date": null
+    },
+    {
+      "id": "OPS-002",
+      "question": "Should actor retirement be represented as protocol state?",
+      "affected_operations": ["RetireActor", "GrantCapability", "RevokeCapability"],
+      "current_behavior": "Revocation exists for authority; actor retirement is not standardized.",
+      "candidate_resolutions": ["Use capability revocation only", "Add actor lifecycle object"],
+      "architectural_implications": "Actor history must remain verifiable after retirement.",
+      "test_coverage": [],
+      "status": "open",
+      "decision_date": null
+    },
+    {
+      "id": "OPS-003",
+      "question": "What are exact comment scope and lifecycle rules?",
+      "affected_operations": ["Comment", "QueryEffectiveState", "SearchEffectiveFacts"],
+      "current_behavior": "CLI and SDK expose proposition, revision, and deliberation-related comments; unresolved filtering is not first-class protocol state.",
+      "candidate_resolutions": ["Keep append-only comments only", "Add comment lifecycle objects", "Separate proposition/revision/deliberation comment types"],
+      "architectural_implications": "Display and search must not confuse comments with effective fact content.",
+      "test_coverage": ["CLI UX suite comments-and-revision-context"],
+      "status": "open",
+      "decision_date": null
+    },
+    {
+      "id": "OPS-004",
+      "question": "What are unarchive and restore semantics?",
+      "affected_operations": ["ArchiveProposition", "WithdrawProposition"],
+      "current_behavior": "Archive and withdraw are implemented; inverse operations are not documented as canonical operations.",
+      "candidate_resolutions": ["Lifecycle successor objects", "Separate restore operations", "No inverse in v0"],
+      "architectural_implications": "Lifecycle history must remain append-only and conflict-aware.",
+      "test_coverage": ["CLI UX suite archive-and-withdrawal"],
+      "status": "open",
+      "decision_date": null
+    },
+    {
+      "id": "OPS-005",
+      "question": "What is the canonical CopyProposition operation?",
+      "affected_operations": ["CopyProposition", "Propose"],
+      "current_behavior": "Provenance support exists, but copy semantics are not standardized as an operation.",
+      "candidate_resolutions": ["Propose with provenance", "Dedicated copy object", "No copy operation in v0"],
+      "architectural_implications": "Copy must create a new proposition identity and preserve provenance without changing original history.",
+      "test_coverage": [],
+      "status": "open",
+      "decision_date": null
+    },
+    {
+      "id": "OPS-006",
+      "question": "Which HTTP operation routes are normative versus provisional?",
+      "affected_operations": ["Propose", "Revise", "CastDecision", "QueryEffectiveState"],
+      "current_behavior": "HTTP bundle push/pull behavior exists; high-level operation routes are provisional.",
+      "candidate_resolutions": ["Bundle-only v0 HTTP", "Add /facts/operations/* endpoints", "Expose query-only operation routes first"],
+      "architectural_implications": "Transport authentication must remain separate from ledger authorization.",
+      "test_coverage": ["HTTP benchmark and route tests"],
+      "status": "open",
+      "decision_date": null
+    },
+    {
+      "id": "OPS-007",
+      "question": "Should read/write CLI aliases be added or removed from required UX coverage?",
+      "affected_operations": ["Propose", "QueryEffectiveState"],
+      "current_behavior": "CLI UX suite reports missing `fact write` and `fact read` as UX defects.",
+      "candidate_resolutions": ["Add aliases", "Remove aliases from required UX commands", "Keep as known CLI redesign gap"],
+      "architectural_implications": "Aliases must remain semantically identical to canonical operations.",
+      "test_coverage": ["CLI UX suite command coverage"],
+      "status": "open",
+      "decision_date": null
+    },
+    {
+      "id": "OPS-008",
+      "question": "What completeness classes are required for federated semantic search?",
+      "affected_operations": ["SearchEffectiveFacts"],
+      "current_behavior": "Local search exists; semantic and federated absence guarantees are explicitly limited.",
+      "candidate_resolutions": ["Local-complete only", "Provider-reported completeness", "Federated signed result manifests"],
+      "architectural_implications": "Search must not present provider scoring as protocol truth.",
+      "test_coverage": ["search-corpus-report"],
+      "status": "open",
+      "decision_date": null
+    }
+  ]
+}

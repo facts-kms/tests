@@ -1,0 +1,63 @@
+version: 1
+name: delayed-authorization-evidence
+seed: 4851
+clock:
+  start: 2026-01-06T12:30:00Z
+characters:
+  - name: bob
+    environments: [replica_source, replica_target]
+ledgers:
+  - name: operations
+steps:
+  - init_replica:
+      actor: bob
+      replica: replica_target
+      ledger: operations
+  - grant:
+      ledger: operations
+      actor: bob
+      capabilities: [propose, accept, deliberate]
+      propagate: false
+  - propose:
+      actor: bob
+      replica: replica_source
+      ledger: operations
+      as: authorization_evidence_policy
+      markdown: |
+        # Authorization evidence policy
+
+        A valid signed object should retry unchanged after authorization evidence arrives.
+  - accept:
+      actor: bob
+      replica: replica_source
+      proposition: authorization_evidence_policy
+  - assert:
+      - status:
+          proposition: authorization_evidence_policy
+          equals: accepted
+      - effective_revision:
+          proposition: authorization_evidence_policy
+          equals: authorization_evidence_policy
+  - retry_missing_dependency:
+      from: replica_source
+      to: replica_target
+      ledger: operations
+      object: authorization_evidence_policy
+      missing_dependency_kind: authorization-evidence
+      as: authorization_evidence_retry
+  - assert:
+      - retry:
+          retry: authorization_evidence_retry
+          first_disposition: rejected-missing-dependency
+          retry_disposition: accepted
+          classification: retryable-unchanged
+          missing_dependency_kind: authorization-evidence
+          retryable_unchanged: true
+          duplicate_count: 1
+          converged: true
+      - status:
+          proposition: authorization_evidence_policy
+          equals: accepted
+      - effective_revision:
+          proposition: authorization_evidence_policy
+          equals: authorization_evidence_policy

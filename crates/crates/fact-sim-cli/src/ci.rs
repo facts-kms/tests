@@ -487,25 +487,25 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
                 "Workspace unit tests",
                 "unit",
                 "correctness",
-                ["cargo", "test-all"],
+                ["cargo", "test", "--workspace", "--all-targets"],
                 true,
                 false,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "smoke-scenarios",
                 "Small deterministic smoke suite",
                 "scenarios",
                 "determinism",
-                ["cargo", "sim", "suite", "run", "scenarios/smoke"],
+                fact_sim_command(&["suite", "run", "scenarios/smoke"]),
                 true,
                 false,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "ux-smoke-spec",
                 "Fast CLI UX smoke contract",
                 "ux",
                 "cli-ux",
-                ["cargo", "sim", "ux", "spec"],
+                fact_sim_command(&["ux", "spec"]),
                 true,
                 false,
             ));
@@ -517,35 +517,35 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
                 "Workspace tests",
                 "unit",
                 "correctness",
-                ["cargo", "test-all"],
+                ["cargo", "test", "--workspace", "--all-targets"],
                 true,
                 false,
             ));
             steps.extend(selected_scenario_steps());
-            steps.push(step(
+            steps.push(step_vec(
                 "ux-smoke",
                 "Casual-user CLI smoke spec",
                 "ux",
                 "cli-ux",
-                ["cargo", "sim", "ux", "spec"],
+                fact_sim_command(&["ux", "spec"]),
                 true,
                 false,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "fault-spec",
                 "Fault taxonomy contract",
                 "faults",
                 "recovery",
-                ["cargo", "sim", "fault", "spec"],
+                fact_sim_command(&["fault", "spec"]),
                 true,
                 false,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "benchmark-spec",
                 "Benchmark framework contract",
                 "benchmarks",
                 "performance",
-                ["cargo", "sim", "benchmark", "spec"],
+                fact_sim_command(&["benchmark", "spec"]),
                 true,
                 false,
             ));
@@ -557,50 +557,41 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
                 "Workspace tests",
                 "unit",
                 "correctness",
-                ["cargo", "test-all"],
+                ["cargo", "test", "--workspace", "--all-targets"],
                 true,
                 false,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "smoke-suite",
                 "Complete small smoke suite",
                 "scenarios",
                 "determinism",
-                ["cargo", "sim", "suite", "run", "scenarios/smoke"],
+                fact_sim_command(&["suite", "run", "scenarios/smoke"]),
                 true,
                 false,
             ));
             steps.extend(conflict_repair_steps());
-            steps.push(step(
+            steps.push(step_vec(
                 "fault-projection",
                 "Projection fault profile",
                 "faults",
                 "recovery",
-                [
-                    "cargo",
-                    "sim",
-                    "fault",
-                    "run",
-                    "--profile",
-                    "faults-projection",
-                ],
+                fact_sim_command(&["fault", "run", "--profile", "faults-projection"]),
                 true,
                 false,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "benchmark-fixtures",
                 "Small/medium benchmark fixture readiness",
                 "benchmarks",
                 "performance",
-                [
-                    "cargo",
-                    "sim",
+                fact_sim_command(&[
                     "benchmark",
                     "fixtures",
                     "--base",
                     "fixtures",
                     "--require-ready",
-                ],
+                ]),
                 true,
                 false,
             ));
@@ -608,25 +599,19 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
         CiTier::Scheduled => {
             let profile = scheduled_profile.unwrap_or(LARGE_PROFILE);
             if args.include_large {
-                steps.push(step(
+                steps.push(step_vec(
                     "scheduled-fixture-plan",
                     "Manual 500K scheduled fixture plan",
                     "fixtures",
                     "fixture-generation",
-                    ["cargo", "sim", "plan", "--profile", profile],
+                    fact_sim_command(&["plan", "--profile", profile]),
                     true,
                     true,
                 ));
             }
-            let mut fixture_command = vec![
-                "cargo".to_string(),
-                "sim".to_string(),
-                "benchmark".to_string(),
-                "fixtures".to_string(),
-                "--base".to_string(),
-                args.fixture_base.display().to_string(),
-                "--require-ready".to_string(),
-            ];
+            let mut fixture_command = fact_sim_command(&["benchmark", "fixtures", "--base"]);
+            fixture_command.push(args.fixture_base.display().to_string());
+            fixture_command.push("--require-ready".to_string());
             if args.include_large {
                 fixture_command.push("--include-large".to_string());
             }
@@ -639,16 +624,10 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
                 true,
                 args.include_large,
             ));
-            let mut benchmark_plan = vec![
-                "cargo".to_string(),
-                "sim".to_string(),
-                "benchmark".to_string(),
-                "plan".to_string(),
-                "--fixture-base".to_string(),
-                args.fixture_base.display().to_string(),
-                "--report-output".to_string(),
-                args.report_dir.display().to_string(),
-            ];
+            let mut benchmark_plan = fact_sim_command(&["benchmark", "plan", "--fixture-base"]);
+            benchmark_plan.push(args.fixture_base.display().to_string());
+            benchmark_plan.push("--report-output".to_string());
+            benchmark_plan.push(args.report_dir.display().to_string());
             if args.include_large {
                 benchmark_plan.push("--include-large".to_string());
             }
@@ -661,12 +640,12 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
                 true,
                 args.include_large,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "fault-sampling",
                 "Scheduled fault sampling",
                 "faults",
                 "recovery",
-                ["cargo", "sim", "fault", "spec"],
+                fact_sim_command(&["fault", "spec"]),
                 true,
                 false,
             ));
@@ -678,37 +657,37 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
                 "Workspace tests",
                 "unit",
                 "correctness",
-                ["cargo", "test-all"],
+                ["cargo", "test", "--workspace", "--all-targets"],
                 true,
                 false,
             ));
             steps.extend(selected_scenario_steps());
             steps.extend(conflict_repair_steps());
-            steps.push(step(
+            steps.push(step_vec(
                 "ux-full-spec",
                 "Full CLI UX contract",
                 "ux",
                 "cli-ux",
-                ["cargo", "sim", "ux", "spec"],
+                fact_sim_command(&["ux", "spec"]),
                 true,
                 false,
             ));
-            steps.push(step(
+            steps.push(step_vec(
                 "benchmark-plan",
                 "Release benchmark matrix plan",
                 "benchmarks",
                 "performance",
-                ["cargo", "sim", "benchmark", "plan"],
+                fact_sim_command(&["benchmark", "plan"]),
                 true,
                 false,
             ));
             if args.include_large {
-                steps.push(step(
+                steps.push(step_vec(
                     "release-large-plan",
                     "Manual 500K release fixture plan",
                     "fixtures",
                     "performance",
-                    ["cargo", "sim", "plan", "--profile", LARGE_PROFILE],
+                    fact_sim_command(&["plan", "--profile", LARGE_PROFILE]),
                     true,
                     true,
                 ));
@@ -743,56 +722,54 @@ fn tier_plan(tier: CiTier, args: &CiRunArgs, scheduled_profile: Option<&str>) ->
 fn focused_plan(suite: CiFocusedSuite, args: &CiRunArgs) -> Result<CiPlan> {
     let steps = match suite {
         CiFocusedSuite::OperationsSpec => Vec::new(),
-        CiFocusedSuite::Ux => vec![step(
+        CiFocusedSuite::Ux => vec![step_vec(
             "focused-ux",
             "Focused UX suite",
             "ux",
             "cli-ux",
-            ["cargo", "sim", "ux", "spec"],
+            fact_sim_command(&["ux", "spec"]),
             true,
             false,
         )],
-        CiFocusedSuite::Sync => vec![step(
+        CiFocusedSuite::Sync => vec![step_vec(
             "focused-sync-scenario",
             "Focused sync scenario",
             "sync",
             "synchronization",
-            [
-                "cargo",
-                "sim",
+            fact_sim_command(&[
                 "scenario",
                 "run",
                 "scenarios/repair/missing-dependency-retry.yaml",
-            ],
+            ]),
             true,
             false,
         )],
-        CiFocusedSuite::Faults => vec![step(
+        CiFocusedSuite::Faults => vec![step_vec(
             "focused-faults",
             "Focused fault contract",
             "faults",
             "recovery",
-            ["cargo", "sim", "fault", "spec"],
+            fact_sim_command(&["fault", "spec"]),
             true,
             false,
         )],
-        CiFocusedSuite::Benchmarks => vec![step(
+        CiFocusedSuite::Benchmarks => vec![step_vec(
             "focused-benchmarks",
             "Focused benchmark contract",
             "benchmarks",
             "performance",
-            ["cargo", "sim", "benchmark", "spec"],
+            fact_sim_command(&["benchmark", "spec"]),
             true,
             false,
         )],
         CiFocusedSuite::Scenarios => selected_scenario_steps(),
         CiFocusedSuite::Docs => Vec::new(),
-        CiFocusedSuite::CliReference => vec![step(
+        CiFocusedSuite::CliReference => vec![step_vec(
             "focused-cli-help",
             "Focused CLI help contract",
             "cli-reference",
             "documentation",
-            ["cargo", "sim", "--help"],
+            fact_sim_command(&["--help"]),
             true,
             false,
         )],
@@ -835,7 +812,7 @@ fn core_static_steps() -> Vec<CiStep> {
             "Formatting",
             "build",
             "documentation",
-            ["cargo", "fmt-check"],
+            ["cargo", "fmt", "--all", "--", "--check"],
             true,
             false,
         ),
@@ -844,7 +821,16 @@ fn core_static_steps() -> Vec<CiStep> {
             "Clippy",
             "build",
             "correctness",
-            ["cargo", "lint"],
+            [
+                "cargo",
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ],
             true,
             false,
         ),
@@ -853,7 +839,7 @@ fn core_static_steps() -> Vec<CiStep> {
             "Workspace compilation",
             "build",
             "correctness",
-            ["cargo", "check-all"],
+            ["cargo", "check", "--workspace", "--all-targets"],
             true,
             false,
         ),
@@ -862,48 +848,38 @@ fn core_static_steps() -> Vec<CiStep> {
 
 fn selected_scenario_steps() -> Vec<CiStep> {
     vec![
-        step(
+        step_vec(
             "scenario-acceptance",
             "Initial proposition acceptance",
             "scenarios",
             "protocol-behavior",
-            [
-                "cargo",
-                "sim",
+            fact_sim_command(&[
                 "scenario",
                 "run",
                 "scenarios/smoke/pending-revision-acceptance.yaml",
-            ],
+            ]),
             true,
             false,
         ),
-        step(
+        step_vec(
             "scenario-conflict",
             "Accepted sibling revision conflict",
             "scenarios",
             "operation-semantics",
-            [
-                "cargo",
-                "sim",
+            fact_sim_command(&[
                 "scenario",
                 "run",
                 "scenarios/conflict/accepted-sibling-revisions.yaml",
-            ],
+            ]),
             true,
             false,
         ),
-        step(
+        step_vec(
             "scenario-reconciliation",
             "Reconciliation select scenario",
             "scenarios",
             "operation-semantics",
-            [
-                "cargo",
-                "sim",
-                "scenario",
-                "run",
-                "scenarios/reconciliation/select.yaml",
-            ],
+            fact_sim_command(&["scenario", "run", "scenarios/reconciliation/select.yaml"]),
             true,
             false,
         ),
@@ -912,33 +888,29 @@ fn selected_scenario_steps() -> Vec<CiStep> {
 
 fn conflict_repair_steps() -> Vec<CiStep> {
     vec![
-        step(
+        step_vec(
             "scenario-missing-dependency",
             "Missing dependency retry",
             "repair",
             "recovery",
-            [
-                "cargo",
-                "sim",
+            fact_sim_command(&[
                 "scenario",
                 "run",
                 "scenarios/repair/missing-dependency-retry.yaml",
-            ],
+            ]),
             true,
             false,
         ),
-        step(
+        step_vec(
             "scenario-projection-repair",
             "Projection repair",
             "repair",
             "projection",
-            [
-                "cargo",
-                "sim",
+            fact_sim_command(&[
                 "scenario",
                 "run",
                 "scenarios/repair/projection-corruption-rebuild.yaml",
-            ],
+            ]),
             true,
             false,
         ),
@@ -963,12 +935,7 @@ fn core_validations() -> Vec<CiValidation> {
 }
 
 fn baseline_comparison_step(args: &CiRunArgs) -> CiStep {
-    let mut command = vec![
-        "cargo".to_string(),
-        "sim".to_string(),
-        "benchmark".to_string(),
-        "compare-matrix".to_string(),
-    ];
+    let mut command = fact_sim_command(&["benchmark", "compare-matrix"]);
     if let Some(thresholds) = &args.thresholds {
         command.push("--thresholds".to_string());
         command.push(thresholds.display().to_string());
@@ -995,6 +962,14 @@ fn baseline_comparison_step(args: &CiRunArgs) -> CiStep {
         false,
         args.include_large,
     )
+}
+
+fn fact_sim_command(args: &[&str]) -> Vec<String> {
+    ["cargo", "run", "-p", "fact-sim-cli", "--"]
+        .into_iter()
+        .chain(args.iter().copied())
+        .map(str::to_string)
+        .collect()
 }
 
 fn step<const N: usize>(

@@ -46,11 +46,12 @@ jobs:
       - name: Scheduled scale validation
         working-directory: fact-tests
         run: |
+          mkdir -p reports/ci
           large_args=()
           if [ "$INCLUDE_LARGE" = "true" ]; then
             large_args+=(--include-large)
           fi
-          cargo sim ci scheduled \
+          cargo run -p fact-sim-cli -- ci scheduled \
             --profile "$PROFILE" \
             --fixture-base "$FIXTURE_BASE" \
             --report-dir reports/ci \
@@ -58,7 +59,13 @@ jobs:
       - name: Render CI summary
         if: always()
         working-directory: fact-tests
-        run: cargo sim ci summary reports/ci/scheduled-summary.json > reports/ci/scheduled-summary.md
+        run: |
+          mkdir -p reports/ci
+          if [ -f reports/ci/scheduled-summary.json ]; then
+            cargo run -p fact-sim-cli -- ci summary reports/ci/scheduled-summary.json > reports/ci/scheduled-summary.md
+          else
+            printf 'Scheduled validation summary was not generated.\n' > reports/ci/scheduled-summary.md
+          fi
       - name: Upload scheduled reports
         if: always()
         uses: actions/upload-artifact@v4

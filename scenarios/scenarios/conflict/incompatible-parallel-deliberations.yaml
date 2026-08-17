@@ -1,0 +1,91 @@
+version: 1
+name: incompatible-parallel-deliberations
+seed: 4301
+clock:
+  start: 2026-01-08T09:00:00Z
+characters:
+  - name: alice
+    environments: [replica_a, replica_b]
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, reject, deliberate]
+  - propose:
+      actor: alice
+      replica: replica_a
+      ledger: operations
+      as: deliberation_policy
+      markdown: |
+        # Deliberation policy
+
+        Parallel deliberations must not pick an arbitrary outcome.
+  - assert:
+      - status:
+          proposition: deliberation_policy
+          equals: pending
+      - deliberation_conflict:
+          proposition: deliberation_policy
+          revision: deliberation_policy
+          equals: false
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - parallel:
+      branches:
+        - replica: replica_a
+          steps:
+            - decide:
+                actor: alice
+                proposition: deliberation_policy
+                deliberation: deliberation_policy
+                value: accepted
+                as: accepted_vote
+            - settle:
+                actor: alice
+                proposition: deliberation_policy
+                revision: deliberation_policy
+                deliberation: deliberation_policy
+                as: accepted_settlement
+        - replica: replica_b
+          steps:
+            - open_deliberation:
+                actor: alice
+                proposition: deliberation_policy
+                revision: deliberation_policy
+                as: reject_deliberation
+            - decide:
+                actor: alice
+                proposition: deliberation_policy
+                deliberation: reject_deliberation
+                value: rejected
+                as: rejected_vote
+            - settle:
+                actor: alice
+                proposition: deliberation_policy
+                revision: deliberation_policy
+                deliberation: reject_deliberation
+                as: rejected_settlement
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - sync:
+      from: replica_b
+      to: replica_a
+      ledger: operations
+  - assert:
+      - status:
+          proposition: deliberation_policy
+          equals: rejected
+      - effective_revision:
+          proposition: deliberation_policy
+          equals: deliberation_policy
+      - deliberation_conflict:
+          proposition: deliberation_policy
+          revision: deliberation_policy
+          equals: false
+          deliberations: [deliberation_policy, reject_deliberation]

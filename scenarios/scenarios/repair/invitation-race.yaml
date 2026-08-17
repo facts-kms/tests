@@ -1,0 +1,82 @@
+version: 1
+name: invitation-race
+seed: 4901
+clock:
+  start: 2026-01-06T13:00:00Z
+characters:
+  - name: alice
+    environments: [replica_a]
+  - name: bob
+    environments: [replica_b]
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, deliberate, invite]
+  - grant:
+      ledger: operations
+      actor: bob
+      capabilities: [comment]
+  - propose:
+      actor: alice
+      replica: replica_a
+      ledger: operations
+      as: policy
+      markdown: |
+        # Invitation race policy
+
+        Participant enrollment must respect invitation lifecycle causality.
+  - invite:
+      actor: alice
+      replica: replica_a
+      proposition: policy
+      participant: bob
+      as: bob_invitation
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - assert:
+      - status:
+          proposition: policy
+          equals: pending
+  - parallel:
+      branches:
+        - replica: replica_b
+          steps:
+            - join:
+                actor: bob
+                proposition: policy
+                invitation: bob_invitation
+                as: bob_join
+        - replica: replica_a
+          steps:
+            - invitation_lifecycle:
+                actor: alice
+                invitation: bob_invitation
+                operation: revoke
+                reason: invitation closed concurrently
+                as: alice_revoke_invitation
+  - sync:
+      from: replica_b
+      to: replica_a
+      ledger: operations
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - assert:
+      - invitation_race:
+          invitation: bob_invitation
+          join: bob_join
+          lifecycle: alice_revoke_invitation
+          operation: revoke
+          equals: true
+          enrollment_occurs: false
+          new_invitation_required: true
+          classification: requires-new-signed-object
+      - status:
+          proposition: policy
+          equals: pending

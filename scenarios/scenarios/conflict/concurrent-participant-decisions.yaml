@@ -1,0 +1,86 @@
+version: 1
+name: concurrent-participant-decisions
+seed: 4201
+clock:
+  start: 2026-01-07T09:00:00Z
+characters:
+  - name: alice
+    environments: [replica_a, replica_b]
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, reject, deliberate]
+  - propose:
+      actor: alice
+      replica: replica_a
+      ledger: operations
+      as: decision_policy
+      markdown: |
+        # Decision policy
+
+        The participant must resolve their own concurrent decision tips.
+  - assert:
+      - status:
+          proposition: decision_policy
+          equals: pending
+      - decision_conflict:
+          proposition: decision_policy
+          participant: alice
+          equals: false
+          applicable_decision_count: 0
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - parallel:
+      branches:
+        - replica: replica_a
+          steps:
+            - decide:
+                actor: alice
+                proposition: decision_policy
+                value: accepted
+                as: alice_accept_tip
+        - replica: replica_b
+          steps:
+            - decide:
+                actor: alice
+                proposition: decision_policy
+                value: rejected
+                as: alice_reject_tip
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - sync:
+      from: replica_b
+      to: replica_a
+      ledger: operations
+  - assert:
+      - decision_conflict:
+          proposition: decision_policy
+          participant: alice
+          equals: false
+          applicable_decision_count: 1
+  - decide:
+      actor: alice
+      replica: replica_a
+      proposition: decision_policy
+      value: accepted
+      as: alice_resolved_decision
+      supersedes: [alice_accept_tip, alice_reject_tip]
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - assert:
+      - decision_conflict:
+          proposition: decision_policy
+          participant: alice
+          equals: false
+          decision_tips: [alice_accept_tip, alice_reject_tip]
+          superseded_by: alice_resolved_decision
+          applicable_decision_count: 1
