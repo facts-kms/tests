@@ -1,0 +1,99 @@
+version: 1
+name: pending-revision-acceptance
+seed: 42
+clock:
+  start: 2026-01-05T09:00:00Z
+characters:
+  - name: alice
+    environments:
+      - alice.laptop
+ledgers:
+  - name: default
+steps:
+  - grant:
+      ledger: default
+      actor: alice
+      capabilities: [admin, accept, archive, comment, deliberate, invite, propose, reject, withdraw]
+  - propose:
+      actor: alice
+      replica: alice.laptop
+      ledger: default
+      as: deployment_policy
+      markdown: |
+        # Deployment policy
+
+        Deployments require peer review.
+  - accept:
+      actor: alice
+      replica: alice.laptop
+      proposition: deployment_policy
+  - assert:
+      - status:
+          proposition: deployment_policy
+          equals: accepted
+      - effective_revision:
+          proposition: deployment_policy
+          equals: deployment_policy
+      - latest_revision:
+          proposition: deployment_policy
+          equals: deployment_policy
+      - pending_action_count:
+          actor: alice
+          equals: 0
+  - revise:
+      actor: alice
+      replica: alice.laptop
+      proposition: deployment_policy
+      as: deployment_policy_v2
+      markdown: |
+        # Deployment policy
+
+        Deployments require peer review and rollback instructions.
+  - assert:
+      - status:
+          proposition: deployment_policy
+          equals: accepted
+      - effective_revision:
+          proposition: deployment_policy
+          equals: deployment_policy
+      - latest_revision:
+          proposition: deployment_policy
+          equals: deployment_policy_v2
+      - revision_status:
+          revision: deployment_policy_v2
+          equals: pending
+      - pending_action_count:
+          actor: alice
+          equals: 1
+      - latest_content:
+          proposition: deployment_policy
+          contains: rollback instructions
+  - cli_check:
+      expected_pending_actions: 1
+  - accept:
+      actor: alice
+      replica: alice.laptop
+      proposition: deployment_policy
+  - assert:
+      - effective_revision:
+          proposition: deployment_policy
+          equals: deployment_policy_v2
+      - latest_revision:
+          proposition: deployment_policy
+          equals: deployment_policy_v2
+      - revision_status:
+          revision: deployment_policy
+          equals: superseded
+      - status:
+          proposition: deployment_policy
+          equals: accepted
+      - pending_action_count:
+          actor: alice
+          equals: 0
+  - rebuild_projections: {}
+  - assert:
+      - projection_rebuild_equivalent:
+          equals: true
+  - cli_check:
+      expected_pending_actions: 0
+assertions:

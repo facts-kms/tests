@@ -1,0 +1,49 @@
+version: 1
+name: missing-dependency-retry
+seed: 4601
+clock:
+  start: 2026-01-06T10:00:00Z
+characters:
+  - name: alice
+    environments: [replica_a, replica_b]
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, deliberate]
+  - propose:
+      actor: alice
+      replica: replica_a
+      ledger: operations
+      as: retry_policy
+      markdown: |
+        # Retry policy
+
+        Dependency closure should be retried unchanged.
+  - accept:
+      actor: alice
+      replica: replica_a
+      proposition: retry_policy
+  - retry_missing_dependency:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+      object: retry_policy
+      as: retry_policy_revision
+  - assert:
+      - retry:
+          retry: retry_policy_revision
+          first_disposition: rejected-missing-dependency
+          retry_disposition: accepted
+          classification: retryable-unchanged
+          retryable_unchanged: true
+          duplicate_count: 1
+          converged: true
+      - status:
+          proposition: retry_policy
+          equals: accepted
+      - effective_revision:
+          proposition: retry_policy
+          equals: retry_policy

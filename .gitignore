@@ -17,8 +17,8 @@
 /crates/fact-sim-runner/target/fact-sim-runs
 
 !/docs
-!/fixtures
 !/migrations
+!/scenarios
 !/scripts
 !/src
 !/tests

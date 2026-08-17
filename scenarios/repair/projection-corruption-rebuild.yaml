@@ -1,0 +1,45 @@
+version: 1
+name: projection-corruption-rebuild
+seed: 4101
+clock:
+  start: 2026-01-06T09:00:00Z
+characters:
+  - name: alice
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, deliberate]
+  - propose:
+      actor: alice
+      ledger: operations
+      as: repair_policy
+      markdown: |
+        # Repair policy
+
+        Canonical history must survive projection repair.
+  - accept:
+      actor: alice
+      proposition: repair_policy
+  - assert:
+      - status:
+          proposition: repair_policy
+          equals: accepted
+      - effective_revision:
+          proposition: repair_policy
+          equals: repair_policy
+  - corrupt_projections: {}
+  - rebuild_projections: {}
+  - assert:
+      - projection_rebuild_equivalent:
+          equals: true
+      - canonical_history_unchanged:
+          equals: true
+      - status:
+          proposition: repair_policy
+          equals: accepted
+      - effective_revision:
+          proposition: repair_policy
+          equals: repair_policy

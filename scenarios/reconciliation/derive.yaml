@@ -1,0 +1,176 @@
+version: 1
+name: reconciliation-derive
+seed: 4503
+clock:
+  start: 2026-01-11T09:00:00Z
+characters:
+  - name: alice
+    environments: [replica_a, replica_b]
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, reject, deliberate]
+  - propose:
+      actor: alice
+      replica: replica_a
+      ledger: operations
+      as: policy
+      markdown: |
+        # Derived policy
+
+        Last undisputed version.
+  - accept:
+      actor: alice
+      replica: replica_a
+      proposition: policy
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - parallel:
+      branches:
+        - replica: replica_a
+          steps:
+            - revise:
+                actor: alice
+                proposition: policy
+                as: policy_a
+                markdown: |
+                  # Derived policy
+
+                  Branch A requirement.
+            - decide:
+                actor: alice
+                proposition: policy
+                deliberation: policy_a
+                value: accepted
+                as: policy_a_vote
+            - settle:
+                actor: alice
+                proposition: policy
+                revision: policy_a
+                deliberation: policy_a
+                as: policy_a_settlement
+        - replica: replica_b
+          steps:
+            - revise:
+                actor: alice
+                proposition: policy
+                as: policy_b
+                markdown: |
+                  # Derived policy
+
+                  Branch B requirement.
+            - decide:
+                actor: alice
+                proposition: policy
+                deliberation: policy_b
+                value: accepted
+                as: policy_b_vote
+            - settle:
+                actor: alice
+                proposition: policy
+                revision: policy_b
+                deliberation: policy_b
+                as: policy_b_settlement
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - sync:
+      from: replica_b
+      to: replica_a
+      ledger: operations
+  - assert:
+      - status:
+          proposition: policy
+          equals: conflict
+      - effective_revision:
+          proposition: policy
+          equals: policy
+      - conflict:
+          proposition: policy
+          conflict_type: accepted-sibling-revisions
+          branch_tips: [policy_a, policy_b]
+          last_undisputed_ancestor: policy
+          reconciliation_required: true
+          no_arbitrary_winner: true
+  - derive:
+      actor: alice
+      replica: replica_a
+      proposition: policy
+      common_ancestor: policy
+      derived_from: [policy_a, policy_b]
+      as: policy_derived
+      markdown: |
+        # Derived policy
+
+        Combined branch A and branch B requirements.
+  - assert:
+      - derived_revision:
+          revision: policy_derived
+          parent: policy
+          derived_from: [policy_a, policy_b]
+  - decide:
+      actor: alice
+      replica: replica_a
+      proposition: policy
+      deliberation: policy_derived
+      value: accepted
+      as: policy_derived_vote
+  - settle:
+      actor: alice
+      replica: replica_a
+      proposition: policy
+      revision: policy_derived
+      deliberation: policy_derived
+      as: policy_derived_settlement
+  - reconcile:
+      actor: alice
+      replica: replica_a
+      as: policy_reconciliation
+      affected_proposition: policy
+      common_ancestor: policy
+      resolution_mode: derive
+      result_revision: policy_derived
+      resolved_tips: [policy_a, policy_b]
+      conflicts:
+        - revision: policy_a
+          deliberation: policy_a
+          settlement: policy_a_settlement
+        - revision: policy_b
+          deliberation: policy_b
+          settlement: policy_b_settlement
+      markdown: |
+        # Policy reconciliation
+
+        Use the derived revision combining both branches.
+  - assert:
+      - reconciliation:
+          proposition: policy_reconciliation
+          affected_proposition: policy
+          common_ancestor: policy
+          resolution_mode: derive
+          result_revision: policy_derived
+          conflicts: [policy_a, policy_b]
+  - accept:
+      actor: alice
+      replica: replica_a
+      proposition: policy_reconciliation
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - assert:
+      - status:
+          proposition: policy_reconciliation
+          equals: accepted
+      - status:
+          proposition: policy
+          equals: accepted
+      - effective_revision:
+          proposition: policy
+          equals: policy_derived

@@ -1,0 +1,61 @@
+version: 1
+name: coordinator-policy-divergence
+seed: 4801
+clock:
+  start: 2026-01-06T12:00:00Z
+characters:
+  - name: alice
+  - name: bob
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, deliberate]
+  - propose:
+      actor: alice
+      ledger: operations
+      as: policy
+      markdown: |
+        # Divergence policy
+
+        Protocol-valid content that one coordinator rejects under private policy.
+  - accept:
+      actor: alice
+      proposition: policy
+  - assert:
+      - status:
+          proposition: policy
+          equals: accepted
+      - effective_revision:
+          proposition: policy
+          equals: policy
+  - record_disposition:
+      coordinator: alice
+      object: policy
+      disposition: accepted
+      reason: protocol-valid
+      as: alice_accepts_policy
+  - record_disposition:
+      coordinator: bob
+      object: policy
+      disposition: rejected-policy
+      classification: retryable-unchanged
+      reason: local-private-policy
+      as: bob_rejects_policy
+  - assert:
+      - coordinator_disposition:
+          records: [alice_accepts_policy, bob_rejects_policy]
+          object: policy
+          dispositions: [accepted, rejected-policy]
+          not_dispositions: [rejected-protocol-invalid]
+          same_object: true
+          different_coordinators: true
+          canonical_unchanged: true
+      - status:
+          proposition: policy
+          equals: accepted
+      - effective_revision:
+          proposition: policy
+          equals: policy

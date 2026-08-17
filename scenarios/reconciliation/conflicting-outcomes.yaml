@@ -1,0 +1,169 @@
+version: 1
+name: reconciliation-conflicting-outcomes
+seed: 4504
+clock:
+  start: 2026-01-12T09:00:00Z
+characters:
+  - name: alice
+    environments: [replica_a, replica_b]
+ledgers:
+  - name: operations
+steps:
+  - grant:
+      ledger: operations
+      actor: alice
+      capabilities: [propose, accept, reject, deliberate]
+  - propose:
+      actor: alice
+      replica: replica_a
+      ledger: operations
+      as: policy
+      markdown: |
+        # Reconciliation conflict policy
+
+        Last undisputed version.
+  - accept:
+      actor: alice
+      replica: replica_a
+      proposition: policy
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - parallel:
+      branches:
+        - replica: replica_a
+          steps:
+            - revise:
+                actor: alice
+                proposition: policy
+                as: policy_a
+                markdown: |
+                  # Reconciliation conflict policy
+
+                  Branch A.
+            - decide:
+                actor: alice
+                proposition: policy
+                deliberation: policy_a
+                value: accepted
+                as: policy_a_vote
+            - settle:
+                actor: alice
+                proposition: policy
+                revision: policy_a
+                deliberation: policy_a
+                as: policy_a_settlement
+        - replica: replica_b
+          steps:
+            - revise:
+                actor: alice
+                proposition: policy
+                as: policy_b
+                markdown: |
+                  # Reconciliation conflict policy
+
+                  Branch B.
+            - decide:
+                actor: alice
+                proposition: policy
+                deliberation: policy_b
+                value: accepted
+                as: policy_b_vote
+            - settle:
+                actor: alice
+                proposition: policy
+                revision: policy_b
+                deliberation: policy_b
+                as: policy_b_settlement
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - sync:
+      from: replica_b
+      to: replica_a
+      ledger: operations
+  - assert:
+      - status:
+          proposition: policy
+          equals: conflict
+      - effective_revision:
+          proposition: policy
+          equals: policy
+      - conflict:
+          proposition: policy
+          conflict_type: accepted-sibling-revisions
+          branch_tips: [policy_a, policy_b]
+          last_undisputed_ancestor: policy
+          reconciliation_required: true
+          no_arbitrary_winner: true
+  - parallel:
+      branches:
+        - replica: replica_a
+          steps:
+            - reconcile:
+                actor: alice
+                as: reconciliation_a
+                affected_proposition: policy
+                common_ancestor: policy
+                resolution_mode: select
+                selected_revision: policy_a
+                resolved_tips: [policy_a, policy_b]
+                conflicts:
+                  - revision: policy_a
+                    deliberation: policy_a
+                    settlement: policy_a_settlement
+                  - revision: policy_b
+                    deliberation: policy_b
+                    settlement: policy_b_settlement
+                markdown: |
+                  # Reconciliation A
+
+                  Select branch A.
+            - accept:
+                actor: alice
+                proposition: reconciliation_a
+        - replica: replica_b
+          steps:
+            - reconcile:
+                actor: alice
+                as: reconciliation_b
+                affected_proposition: policy
+                common_ancestor: policy
+                resolution_mode: select
+                selected_revision: policy_b
+                resolved_tips: [policy_a, policy_b]
+                conflicts:
+                  - revision: policy_a
+                    deliberation: policy_a
+                    settlement: policy_a_settlement
+                  - revision: policy_b
+                    deliberation: policy_b
+                    settlement: policy_b_settlement
+                markdown: |
+                  # Reconciliation B
+
+                  Select branch B.
+            - accept:
+                actor: alice
+                proposition: reconciliation_b
+  - sync:
+      from: replica_a
+      to: replica_b
+      ledger: operations
+  - sync:
+      from: replica_b
+      to: replica_a
+      ledger: operations
+  - assert:
+      - status:
+          proposition: policy
+          equals: conflict
+      - effective_revision:
+          proposition: policy
+          equals: policy
+      - reconciliation_conflict:
+          proposition: policy
+          equals: true
+          reason: multiple-reconciliation-outcomes
